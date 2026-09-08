@@ -1,5 +1,6 @@
 // src/controllers/NuevaVentaController.js
 const nuevaVentaService = require("../services/NuevaVentaService");
+const SocketService = require("../services/SocketService");
 
 // ============================================
 // BUSCAR ORGÁNICOS (CON FILTRO POR GRADO)
@@ -325,10 +326,28 @@ const registrarVenta = async (req, res) => {
       negocioId: parseInt(negocioId),
       userId: req.user.id_usuario,
       role: req.user.rol_nombre,
-      username: req.user.usuario
+      username: req.user.usuario,
+      tiendaId: ventaData.tiendaId
     };
 
     const result = await nuevaVentaService.registrarVenta(ventaData, userInfo);
+
+    // ============================================
+    // NOTIFICAR POR WEBSOCKET
+    // ============================================
+    SocketService.notifyNewSale({
+      idPedido: result.idPedido,
+      codigoVenta: result.codigoVenta,
+      total: result.total,
+      cliente: ventaData.clientName || 'Sin Cliente',
+      metodoPago: ventaData.metodoPago,
+      tiendaId: ventaData.tiendaId,
+      tieneLentes: tieneLentes,
+      tieneProductos: tieneProductos
+    }, userInfo);
+
+    // Notificar refresh para dashboards
+    SocketService.notifyRefresh('nueva-venta', userInfo);
 
     res.json({
       success: true,

@@ -1,5 +1,6 @@
 // src/controllers/HistorialVentasController.js
 const historialVentasService = require("../services/HistorialVentasService");
+const SocketService = require("../services/SocketService");
 
 // ============================================
 // GET - OBTENER VENTAS CON FILTROS
@@ -561,6 +562,19 @@ const anularVenta = async (req, res) => {
     };
 
     const result = await historialVentasService.anularVenta(id, userInfo);
+
+    // ============================================
+    // NOTIFICAR POR WEBSOCKET
+    // ============================================
+    SocketService.notifyVoidedSale({
+      id: id,
+      codigoVenta: result.codigoVenta,
+      motivo: result.motivo || 'Anulación por administrador',
+      tiendaId: tiendaId || 'todas'
+    }, userInfo);
+
+    // Notificar refresh para dashboards
+    SocketService.notifyRefresh('historial-ventas', userInfo);
 
     res.json({
       success: true,

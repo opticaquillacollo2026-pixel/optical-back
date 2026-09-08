@@ -1,9 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const { connectDB } = require("./db");
-
+const { createServer } = require('http'); // <-- NUEVO
+const { initSocket } = require('./src/socket');
 const app = express();
-
+const server = createServer(app);
 const allowedOrigins = [
   "http://localhost:8080",
   "https://optisystem.spiderlabsystems.com",  
@@ -29,7 +30,7 @@ const corsOptions = {
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
-
+const io = initSocket(server);
 app.use(cors(corsOptions));
 
 app.options("*", cors(corsOptions));
@@ -89,12 +90,11 @@ app.use("*", (req, res) => {
     message: `Ruta no encontrada: ${req.originalUrl}`,
   });
 });
-
 const startServer = async () => {
   try {
     await connectDB();
     const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => {
+    server.listen(PORT, () => { // <-- USAR server.listen en lugar de app.listen
       console.log(`Servidor corriendo en el puerto ${PORT}`);
     });
   } catch (error) {

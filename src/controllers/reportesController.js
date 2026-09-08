@@ -1,5 +1,6 @@
 // src/controllers/reportesController.js
 const reportesService = require("../services/reportesService");
+const SocketService = require("../services/SocketService");
 
 /**
  * Obtener reporte completo con todos los datos
@@ -410,6 +411,20 @@ const getDateFilterOptions = async (req, res) => {
   }
 };
 
+// ============================================
+// NOTIFICACIONES POR WEBSOCKET - NUEVO
+// ============================================
+
+/**
+ * Notificar actualización de reportes (para uso desde otros servicios)
+ */
+const notifyReportesUpdate = (userInfo, data = {}) => {
+  SocketService.notifyRefresh('reportes', {
+    ...userInfo,
+    ...data
+  });
+};
+
 // EXPORTAR TODAS LAS FUNCIONES
 module.exports = {
   getReporteCompleto,
@@ -423,5 +438,6 @@ module.exports = {
   getMovimientosStock,
   getProductosUnicos,
   getUsuariosUnicos,
-  getDateFilterOptions
+  getDateFilterOptions,
+  notifyReportesUpdate
 };
