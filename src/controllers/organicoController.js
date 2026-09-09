@@ -29,17 +29,17 @@ const getOrganicos = async (req, res) => {
 
 const createOrganico = async (req, res) => {
   try {
-    const { nombre, tipo, rangos } = req.body;  // Añadido tipo
+    const { nombre, tipo, rangos } = req.body;
     const userId = req.user.id_usuario;
     const userRole = req.user.rol_nombre;
 
     console.log("=== createOrganico Controller ===");
     console.log("userId:", userId);
     console.log("nombre:", nombre);
-    console.log("tipo:", tipo);  // Añadido log
+    console.log("tipo:", tipo);
     console.log("rangos:", rangos?.length);
 
-    if (!nombre || !tipo || !rangos || rangos.length === 0) {  // Añadido validación de tipo
+    if (!nombre || !tipo || !rangos || rangos.length === 0) {
       return res.status(400).json({
         success: false,
         message: "Nombre, tipo y rangos son requeridos"
@@ -57,7 +57,7 @@ const createOrganico = async (req, res) => {
 
     const nuevoOrganico = await organicoService.createOrganico(userId, userRole, {
       nombre,
-      tipo,  // Añadido tipo
+      tipo,
       rangos
     });
 
@@ -78,17 +78,17 @@ const createOrganico = async (req, res) => {
 const updateOrganico = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, tipo, rangos } = req.body;  // Añadido tipo
+    const { nombre, tipo, rangos } = req.body;
     const userId = req.user.id_usuario;
     const userRole = req.user.rol_nombre;
 
     console.log("=== updateOrganico Controller ===");
     console.log("id:", id);
     console.log("nombre:", nombre);
-    console.log("tipo:", tipo);  // Añadido log
+    console.log("tipo:", tipo);
     console.log("rangos:", rangos?.length);
 
-    if (!nombre || !tipo || !rangos || rangos.length === 0) {  // Añadido validación de tipo
+    if (!nombre || !tipo || !rangos || rangos.length === 0) {
       return res.status(400).json({
         success: false,
         message: "Nombre, tipo y rangos son requeridos"
@@ -106,7 +106,7 @@ const updateOrganico = async (req, res) => {
 
     const organicoActualizado = await organicoService.updateOrganico(userId, userRole, id, {
       nombre,
-      tipo,  // Añadido tipo
+      tipo,
       rangos
     });
 
