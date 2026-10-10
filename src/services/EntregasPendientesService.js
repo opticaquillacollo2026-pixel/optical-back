@@ -113,6 +113,36 @@ const getPagosByEntregaId = async (idPedido) => {
 };
 
 // ============================================
+// FUNCIÓN PARA OBTENER LA MEDIDA MÁS RECIENTE DEL CLIENTE
+// ============================================
+
+const getMedidaMasRecienteByClienteId = async (clientId) => {
+  try {
+    const result = await query(
+      `
+      SELECT 
+        lejos_od_esfera, lejos_od_cilindro, lejos_od_eje,
+        lejos_oi_esfera, lejos_oi_cilindro, lejos_oi_eje,
+        cerca_od_esfera, cerca_od_cilindro, cerca_od_eje,
+        cerca_oi_esfera, cerca_oi_cilindro, cerca_oi_eje,
+        dip, add_medida, nota, fecha_medida
+      FROM medida
+      WHERE id_persona = $1
+      ORDER BY fecha_medida DESC NULLS LAST, id_medida DESC
+      LIMIT 1
+      `,
+      [clientId]
+    );
+
+    if (result.rows.length === 0) return null;
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error getting medida más reciente:", error);
+    return null;
+  }
+};
+
+// ============================================
 // FUNCIÓN PARA APLICAR FILTROS DE FECHA
 // ============================================
 
@@ -193,6 +223,7 @@ const getEntregas = async (soloPendientes, userInfo, dateFilter = null) => {
     }
 
     // Query para obtener todas las entregas
+    // ✅ CAMBIO: quitado per.id_medida
     let queryText = `
       SELECT 
         ep.id_entrega_pendiente,
@@ -208,7 +239,6 @@ const getEntregas = async (soloPendientes, userInfo, dateFilter = null) => {
         per.nombre,
         per.apellido,
         per.celular,
-        per.id_medida,
         t.nombre_tienda,
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
@@ -264,34 +294,8 @@ const getEntregas = async (soloPendientes, userInfo, dateFilter = null) => {
     for (const row of result.rows) {
       const pagos = await getPagosByEntregaId(row.id_pedido);
 
-      let medidas = null;
-      if (row.id_medida) {
-        const medidaResult = await query(
-          `
-          SELECT 
-            lejos_od_esfera,
-            lejos_od_cilindro,
-            lejos_od_eje,
-            lejos_oi_esfera,
-            lejos_oi_cilindro,
-            lejos_oi_eje,
-            cerca_od_esfera,
-            cerca_od_cilindro,
-            cerca_od_eje,
-            cerca_oi_esfera,
-            cerca_oi_cilindro,
-            cerca_oi_eje,
-            dip,
-            add_medida
-          FROM medida
-          WHERE id_medida = $1
-          `,
-          [row.id_medida]
-        );
-        if (medidaResult.rows.length > 0) {
-          medidas = medidaResult.rows[0];
-        }
-      }
+      // ✅ CAMBIO: obtener medida más reciente del cliente desde la tabla `medida`
+      const medidas = await getMedidaMasRecienteByClienteId(row.id_persona);
 
       const lenteResult = await query(
         `
@@ -318,7 +322,7 @@ const getEntregas = async (soloPendientes, userInfo, dateFilter = null) => {
       const lenteInfo = lenteResult.rows[0] || {};
       const entregaData = {
         ...row,
-        ...medidas,
+        ...(medidas || {}),
         ...lenteInfo,
         pagos: pagos
       };
@@ -360,6 +364,7 @@ const getEntregaById = async (id, userInfo) => {
       return null;
     }
 
+    // ✅ CAMBIO: quitado per.id_medida
     const result = await query(
       `
       SELECT 
@@ -376,7 +381,6 @@ const getEntregaById = async (id, userInfo) => {
         per.nombre,
         per.apellido,
         per.celular,
-        per.id_medida,
         t.nombre_tienda,
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
@@ -400,34 +404,8 @@ const getEntregaById = async (id, userInfo) => {
     const row = result.rows[0];
     const pagos = await getPagosByEntregaId(row.id_pedido);
 
-    let medidas = null;
-    if (row.id_medida) {
-      const medidaResult = await query(
-        `
-        SELECT 
-          lejos_od_esfera,
-          lejos_od_cilindro,
-          lejos_od_eje,
-          lejos_oi_esfera,
-          lejos_oi_cilindro,
-          lejos_oi_eje,
-          cerca_od_esfera,
-          cerca_od_cilindro,
-          cerca_od_eje,
-          cerca_oi_esfera,
-          cerca_oi_cilindro,
-          cerca_oi_eje,
-          dip,
-          add_medida
-        FROM medida
-        WHERE id_medida = $1
-        `,
-        [row.id_medida]
-      );
-      if (medidaResult.rows.length > 0) {
-        medidas = medidaResult.rows[0];
-      }
-    }
+    // ✅ CAMBIO: obtener medida más reciente del cliente
+    const medidas = await getMedidaMasRecienteByClienteId(row.id_persona);
 
     const lenteResult = await query(
       `
@@ -454,7 +432,7 @@ const getEntregaById = async (id, userInfo) => {
     const lenteInfo = lenteResult.rows[0] || {};
     const entregaData = {
       ...row,
-      ...medidas,
+      ...(medidas || {}),
       ...lenteInfo,
       pagos: pagos
     };
@@ -621,24 +599,28 @@ const crearEntrega = async (data, userInfo) => {
 
     const idEntrega = entregaResult.rows[0].id_entrega_pendiente;
 
-    // 4. Si hay medidas, guardarlas
+    // 4. ✅ CAMBIO: Si hay medidas, guardarlas como NUEVA medida en el historial
     if (medidas) {
       await query(
         `
-        UPDATE persona 
-        SET id_medida = (
-          INSERT INTO medida (
-            lejos_od_esfera, lejos_od_cilindro, lejos_od_eje,
-            lejos_oi_esfera, lejos_oi_cilindro, lejos_oi_eje,
-            cerca_od_esfera, cerca_od_cilindro, cerca_od_eje,
-            cerca_oi_esfera, cerca_oi_cilindro, cerca_oi_eje,
-            dip, add_medida
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-          RETURNING id_medida
-        ) 
-        WHERE id_persona = $15
+        INSERT INTO medida (
+          id_persona,
+          lejos_od_esfera, lejos_od_cilindro, lejos_od_eje,
+          lejos_oi_esfera, lejos_oi_cilindro, lejos_oi_eje,
+          cerca_od_esfera, cerca_od_cilindro, cerca_od_eje,
+          cerca_oi_esfera, cerca_oi_cilindro, cerca_oi_eje,
+          dip, add_medida, fecha_medida
+        ) VALUES (
+          $1,
+          $2, $3, $4,
+          $5, $6, $7,
+          $8, $9, $10,
+          $11, $12, $13,
+          $14, $15, TIMEZONE('America/La_Paz', NOW())
+        )
         `,
         [
+          idCliente,
           medidas.lejosDerecho?.esfera || null,
           medidas.lejosDerecho?.cilindro || null,
           medidas.lejosDerecho?.eje || null,
@@ -653,7 +635,6 @@ const crearEntrega = async (data, userInfo) => {
           medidas.cercaIzquierdo?.eje || null,
           medidas.dip || null,
           medidas.add || null,
-          idCliente
         ]
       );
     }

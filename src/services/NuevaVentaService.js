@@ -44,7 +44,7 @@ const searchOrganicos = async (term, tipo, grado, userInfo) => {
           id_organico: row.id_organico,
           nombre_organico: row.nombre_organico,
           tipo: row.tipo,
-          rangos: []
+          rangos: [],
         };
       }
       organicMap[row.id_organico].rangos.push({
@@ -52,7 +52,7 @@ const searchOrganicos = async (term, tipo, grado, userInfo) => {
         precio_compra: parseFloat(row.precio_compra),
         precio_venta: parseFloat(row.precio_venta),
         inicio: parseFloat(row.inicio),
-        fin: parseFloat(row.fin)
+        fin: parseFloat(row.fin),
       });
     }
 
@@ -99,7 +99,7 @@ const getOrganicPrice = async (organicoId, grado, userInfo) => {
       precio_compra: parseFloat(result.rows[0].precio_compra),
       precio_venta: parseFloat(result.rows[0].precio_venta),
       inicio: parseFloat(result.rows[0].inicio),
-      fin: parseFloat(result.rows[0].fin)
+      fin: parseFloat(result.rows[0].fin),
     };
   } catch (error) {
     console.error("Error en getOrganicPrice service:", error);
@@ -142,14 +142,14 @@ const searchMateriales = async (tipo, term, userInfo) => {
 
     const result = await query(queryText, params);
 
-    return result.rows.map(row => ({
+    return result.rows.map((row) => ({
       id: row.id,
       nombre: row.nombre,
-      codigo: row.codigo || '',
+      codigo: row.codigo || "",
       categoria: row.categoria,
       precioCompra: parseFloat(row.preciocompra || 0),
       precioVenta: parseFloat(row.precioventa || 0),
-      stock: parseInt(row.stock || 0)
+      stock: parseInt(row.stock || 0),
     }));
   } catch (error) {
     console.error("Error en searchMateriales service:", error);
@@ -188,11 +188,11 @@ const searchProductos = async (term, userInfo) => {
 
     const result = await query(queryText, params);
 
-    return result.rows.map(row => ({
+    return result.rows.map((row) => ({
       id: row.id,
       nombre: row.nombre,
       precio: parseFloat(row.precio || 0),
-      tipo: row.tipo || 'Producto'
+      tipo: row.tipo || "Producto",
     }));
   } catch (error) {
     console.error("Error en searchProductos service:", error);
@@ -207,11 +207,11 @@ const searchProductos = async (term, userInfo) => {
 const generarCodigoVenta = async (tiendaId) => {
   try {
     const now = new Date();
-    const dia = String(now.getDate()).padStart(2, '0');
-    const mes = String(now.getMonth() + 1).padStart(2, '0');
-    const anio = String(now.getFullYear()).slice(-2); // Últimos 2 dígitos del año (ej: 2026 → 26)
-    const diaMesAnio = dia + mes + anio; // Ej: 310826
-    
+    const dia = String(now.getDate()).padStart(2, "0");
+    const mes = String(now.getMonth() + 1).padStart(2, "0");
+    const anio = String(now.getFullYear()).slice(-2);
+    const diaMesAnio = dia + mes + anio;
+
     const result = await query(
       `
       SELECT codigo_pedido 
@@ -223,12 +223,11 @@ const generarCodigoVenta = async (tiendaId) => {
       `,
       [parseInt(tiendaId)]
     );
-    
+
     let numero = 1;
     if (result.rows.length > 0) {
       const ultimoCodigo = result.rows[0].codigo_pedido;
-      // Buscar el número al final del código (después del último guion)
-      const partes = ultimoCodigo.split('-');
+      const partes = ultimoCodigo.split("-");
       if (partes.length >= 2) {
         const ultimoNumero = parseInt(partes[partes.length - 1]);
         if (!isNaN(ultimoNumero)) {
@@ -236,14 +235,13 @@ const generarCodigoVenta = async (tiendaId) => {
         }
       }
     }
-    
-    return `VTA${diaMesAnio}-${numero}`; // Formato: VTA310826-1
+
+    return `VTA${diaMesAnio}-${numero}`;
   } catch (error) {
     console.error("Error generando código de venta:", error);
-    // Fallback con timestamp
     const now = new Date();
-    const dia = String(now.getDate()).padStart(2, '0');
-    const mes = String(now.getMonth() + 1).padStart(2, '0');
+    const dia = String(now.getDate()).padStart(2, "0");
+    const mes = String(now.getMonth() + 1).padStart(2, "0");
     const anio = String(now.getFullYear()).slice(-2);
     return `VTA${dia}${mes}${anio}-${Date.now()}`;
   }
@@ -255,7 +253,6 @@ const generarCodigoVenta = async (tiendaId) => {
 
 const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
   try {
-    // Verificar stock actual
     const stockResult = await query(
       `
       SELECT stock, id_material_tienda
@@ -280,7 +277,6 @@ const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
 
     const newStock = currentStock - cantidad;
 
-    // Actualizar stock
     await query(
       `
       UPDATE material_tienda
@@ -324,7 +320,7 @@ const registrarMovimientoCaja = async (tiendaId, userId, montoEfectivo, idVenta)
 
     const caja = cajaResult.rows[0];
 
-    if (caja.estado !== 'abierta') {
+    if (caja.estado !== "abierta") {
       throw new Error(`La caja de la tienda está cerrada. No se pueden registrar pagos en efectivo.`);
     }
 
@@ -360,9 +356,9 @@ const registrarMovimientoCaja = async (tiendaId, userId, montoEfectivo, idVenta)
         montoNuevo,
         montoAnterior,
         montoEfectivo,
-        'ingreso',
+        "ingreso",
         `Pago en efectivo registrado en venta`,
-        idVenta
+        idVenta,
       ]
     );
 
@@ -370,6 +366,130 @@ const registrarMovimientoCaja = async (tiendaId, userId, montoEfectivo, idVenta)
   } catch (error) {
     console.error("Error registrando movimiento en caja:", error);
     throw new Error(error.message || "Error al registrar el movimiento en caja");
+  }
+};
+
+// ============================================
+// GUARDAR MEDIDA DEL CLIENTE (HISTORIAL 1:N)
+// ============================================
+
+/**
+ * Guarda la medida del cliente.
+ * - Si `medidaId` viene: ACTUALIZA esa medida (fecha a hoy) y guarda la nota.
+ * - Si no viene: CREA una nueva medida en el historial.
+ */
+const guardarMedidaCliente = async (clientId, medidas) => {
+  try {
+    const clienteId = parseInt(clientId);
+    if (isNaN(clienteId)) {
+      throw new Error("ID de cliente inválido");
+    }
+
+    // Validar cliente existe
+    const clienteResult = await query(
+      `SELECT id_persona FROM persona WHERE id_persona = $1 AND estado = 'activo'`,
+      [clienteId]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      throw new Error("Cliente no encontrado");
+    }
+
+    const medidaId = medidas?.medidaId ? parseInt(medidas.medidaId) : null;
+    const nota = medidas?.nota || null;
+
+    if (medidaId) {
+      // Verificar pertenencia
+      const check = await query(
+        `SELECT id_medida FROM medida WHERE id_medida = $1 AND id_persona = $2`,
+        [medidaId, clienteId]
+      );
+
+      if (check.rows.length === 0) {
+        throw new Error("La medida no existe o no pertenece al cliente");
+      }
+
+      await query(
+        `
+        UPDATE medida SET
+          lejos_od_esfera = $1, lejos_od_cilindro = $2, lejos_od_eje = $3,
+          lejos_oi_esfera = $4, lejos_oi_cilindro = $5, lejos_oi_eje = $6,
+          cerca_od_esfera = $7, cerca_od_cilindro = $8, cerca_od_eje = $9,
+          cerca_oi_esfera = $10, cerca_oi_cilindro = $11, cerca_oi_eje = $12,
+          dip = $13, add_medida = $14, nota = $15,
+          fecha_medida = TIMEZONE('America/La_Paz', NOW())
+        WHERE id_medida = $16
+        `,
+        [
+          medidas.lejosDerecho.esfera || "",
+          medidas.lejosDerecho.cilindro || "",
+          medidas.lejosDerecho.eje || "",
+          medidas.lejosIzquierdo.esfera || "",
+          medidas.lejosIzquierdo.cilindro || "",
+          medidas.lejosIzquierdo.eje || "",
+          medidas.cercaDerecho.esfera || "",
+          medidas.cercaDerecho.cilindro || "",
+          medidas.cercaDerecho.eje || "",
+          medidas.cercaIzquierdo.esfera || "",
+          medidas.cercaIzquierdo.cilindro || "",
+          medidas.cercaIzquierdo.eje || "",
+          medidas.dip || "",
+          medidas.add || "",
+          nota,
+          medidaId,
+        ]
+      );
+
+      console.log(`📝 Medida ${medidaId} actualizada (fecha → hoy) para cliente ${clienteId}`);
+      return medidaId;
+    } else {
+      // Crear NUEVA medida en el historial
+      const medidaResult = await query(
+        `
+        INSERT INTO medida (
+          id_persona,
+          lejos_od_esfera, lejos_od_cilindro, lejos_od_eje,
+          lejos_oi_esfera, lejos_oi_cilindro, lejos_oi_eje,
+          cerca_od_esfera, cerca_od_cilindro, cerca_od_eje,
+          cerca_oi_esfera, cerca_oi_cilindro, cerca_oi_eje,
+          dip, add_medida, nota, fecha_medida
+        ) VALUES (
+          $1,
+          $2, $3, $4,
+          $5, $6, $7,
+          $8, $9, $10,
+          $11, $12, $13,
+          $14, $15, $16, TIMEZONE('America/La_Paz', NOW())
+        )
+        RETURNING id_medida
+        `,
+        [
+          clienteId,
+          medidas.lejosDerecho.esfera || "",
+          medidas.lejosDerecho.cilindro || "",
+          medidas.lejosDerecho.eje || "",
+          medidas.lejosIzquierdo.esfera || "",
+          medidas.lejosIzquierdo.cilindro || "",
+          medidas.lejosIzquierdo.eje || "",
+          medidas.cercaDerecho.esfera || "",
+          medidas.cercaDerecho.cilindro || "",
+          medidas.cercaDerecho.eje || "",
+          medidas.cercaIzquierdo.esfera || "",
+          medidas.cercaIzquierdo.cilindro || "",
+          medidas.cercaIzquierdo.eje || "",
+          medidas.dip || "",
+          medidas.add || "",
+          nota,
+        ]
+      );
+
+      const nuevaMedidaId = medidaResult.rows[0].id_medida;
+      console.log(`📝 Nueva medida ${nuevaMedidaId} creada para cliente ${clienteId}`);
+      return nuevaMedidaId;
+    }
+  } catch (error) {
+    console.error("Error en guardarMedidaCliente:", error);
+    throw new Error(error.message || "Error al guardar la medida del cliente");
   }
 };
 
@@ -393,110 +513,89 @@ const registrarVenta = async (ventaData, userInfo) => {
     pagoQR,
     medidas,
     lentes,
-    productos
+    productos,
   } = ventaData;
 
   console.log("📝 registrarVenta - tiendaId:", tiendaId, "negocioId:", negocioId);
   console.log("📝 Cantidad de lentes:", lentes?.length || 0);
   console.log("📝 Cantidad de productos:", productos?.length || 0);
   console.log("📝 Motivo descuento:", motivoDescuento || "Sin motivo");
+  console.log("📝 medidaId (si viene del historial):", medidas?.medidaId || "NUEVA");
 
   try {
     // 1. Generar código de venta
     const codigoVenta = await generarCodigoVenta(tiendaId);
     console.log("📝 Código de venta generado:", codigoVenta);
 
-    // 2. Obtener o crear la medida para el cliente
-    let idMedida = null;
-    
-    const clienteResult = await query(
-      `SELECT id_medida FROM persona WHERE id_persona = $1`,
-      [parseInt(clientId)]
-    );
-
-    if (clienteResult.rows.length > 0 && clienteResult.rows[0].id_medida) {
-      idMedida = clienteResult.rows[0].id_medida;
-    }
-
-    if (!idMedida) {
-      const medidaResult = await query(
-        `
-        INSERT INTO medida (
-          lejos_od_esfera, lejos_od_cilindro, lejos_od_eje,
-          lejos_oi_esfera, lejos_oi_cilindro, lejos_oi_eje,
-          cerca_od_esfera, cerca_od_cilindro, cerca_od_eje,
-          cerca_oi_esfera, cerca_oi_cilindro, cerca_oi_eje,
-          dip, add_medida
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        RETURNING id_medida
-        `,
-        [
-          medidas.lejosDerecho.esfera || '', medidas.lejosDerecho.cilindro || '', medidas.lejosDerecho.eje || '',
-          medidas.lejosIzquierdo.esfera || '', medidas.lejosIzquierdo.cilindro || '', medidas.lejosIzquierdo.eje || '',
-          medidas.cercaDerecho.esfera || '', medidas.cercaDerecho.cilindro || '', medidas.cercaDerecho.eje || '',
-          medidas.cercaIzquierdo.esfera || '', medidas.cercaIzquierdo.cilindro || '', medidas.cercaIzquierdo.eje || '',
-          medidas.dip || '', medidas.add || ''
-        ]
-      );
-      idMedida = medidaResult.rows[0].id_medida;
-
-      await query(
-        `UPDATE persona SET id_medida = $1 WHERE id_persona = $2`,
-        [idMedida, parseInt(clientId)]
-      );
-    } else {
-      await query(
-        `
-        UPDATE medida SET
-          lejos_od_esfera = $1, lejos_od_cilindro = $2, lejos_od_eje = $3,
-          lejos_oi_esfera = $4, lejos_oi_cilindro = $5, lejos_oi_eje = $6,
-          cerca_od_esfera = $7, cerca_od_cilindro = $8, cerca_od_eje = $9,
-          cerca_oi_esfera = $10, cerca_oi_cilindro = $11, cerca_oi_eje = $12,
-          dip = $13, add_medida = $14
-        WHERE id_medida = $15
-        `,
-        [
-          medidas.lejosDerecho.esfera || '', medidas.lejosDerecho.cilindro || '', medidas.lejosDerecho.eje || '',
-          medidas.lejosIzquierdo.esfera || '', medidas.lejosIzquierdo.cilindro || '', medidas.lejosIzquierdo.eje || '',
-          medidas.cercaDerecho.esfera || '', medidas.cercaDerecho.cilindro || '', medidas.cercaDerecho.eje || '',
-          medidas.cercaIzquierdo.esfera || '', medidas.cercaIzquierdo.cilindro || '', medidas.cercaIzquierdo.eje || '',
-          medidas.dip || '', medidas.add || '',
-          parseInt(idMedida)
-        ]
-      );
+    // 2. Guardar la medida del cliente (historial 1:N)
+    //    - Si medidas.medidaId viene → actualiza esa medida (fecha a hoy)
+    //    - Si no → crea una nueva medida
+    if (medidas && clientId) {
+      try {
+        await guardarMedidaCliente(clientId, medidas);
+      } catch (medidaError) {
+        console.warn("⚠️ No se pudo guardar la medida del cliente:", medidaError.message);
+        // No abortamos la venta si falla el guardado de la medida
+      }
     }
 
     // 3. Crear UN SOLO pedido para TODOS los lentes y productos
-    const estadoPago = montoPagado >= total ? 'Completo' : (montoPagado > 0 ? 'Parcial' : 'Pendiente');
+    const estadoPago = montoPagado >= total ? "Completo" : montoPagado > 0 ? "Parcial" : "Pendiente";
 
-    const pedidoResult = await query(
-      `
-      INSERT INTO pedido (
-        codigo_pedido,
-        id_cliente,
-        id_tienda,
-        sub_total,
-        descuento,
-        total,
-        estado_pago,
-        motivo_descripcion
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id_pedido
-      `,
-      [
-        codigoVenta,
-        parseInt(clientId),
-        parseInt(tiendaId),
-        parseFloat(subtotal || 0),
-        parseFloat(descuento || 0),
-        parseFloat(total || 0),
-        estadoPago,
-        motivoDescuento || null
-      ]
-    );
+    // Insertar pedido con reintento en caso de colisión de código
+    let idPedido = null;
+    let codigoVentaFinal = codigoVenta;
+    let intentos = 0;
+    const MAX_INTENTOS = 5;
 
-    const idPedido = pedidoResult.rows[0].id_pedido;
-    console.log("📝 Pedido creado ID:", idPedido);
+    while (intentos < MAX_INTENTOS) {
+      try {
+        const pedidoResult = await query(
+          `
+          INSERT INTO pedido (
+            codigo_pedido,
+            id_cliente,
+            id_tienda,
+            sub_total,
+            descuento,
+            total,
+            estado_pago,
+            motivo_descripcion
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING id_pedido
+          `,
+          [
+            codigoVentaFinal,
+            parseInt(clientId),
+            parseInt(tiendaId),
+            parseFloat(subtotal || 0),
+            parseFloat(descuento || 0),
+            parseFloat(total || 0),
+            estadoPago,
+            motivoDescuento || null,
+          ]
+        );
+
+        idPedido = pedidoResult.rows[0].id_pedido;
+        break;
+      } catch (err) {
+        if (err.code === "23505") {
+          intentos++;
+          console.warn(
+            `⚠️ Colisión de código de venta "${codigoVentaFinal}". Reintento ${intentos}/${MAX_INTENTOS}...`
+          );
+          codigoVentaFinal = await generarCodigoVenta(tiendaId);
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!idPedido) {
+      throw new Error("No se pudo generar un código de venta único después de varios intentos");
+    }
+
+    console.log("📝 Pedido creado ID:", idPedido, "con código:", codigoVentaFinal);
 
     // 4. Crear UNA SOLA entrega pendiente para el pedido
     const entregaResult = await query(
@@ -517,13 +616,13 @@ const registrarVenta = async (ventaData, userInfo) => {
     // 5. Registrar TODOS los lentes en la MISMA entrega Y DESCONTAR STOCK
     if (lentes && lentes.length > 0) {
       console.log(`📝 Registrando ${lentes.length} lentes...`);
-      
+
       for (let i = 0; i < lentes.length; i++) {
         const lente = lentes[i];
         console.log(`📝 Lente ${i + 1}:`, lente.tipo);
-        
+
         let idOrganico = null;
-        if (lente.materialId && lente.materialId !== 'Sin material' && lente.materialId !== '') {
+        if (lente.materialId && lente.materialId !== "Sin material" && lente.materialId !== "") {
           const organicoResult = await query(
             `
             SELECT id_organico FROM organico 
@@ -537,7 +636,7 @@ const registrarVenta = async (ventaData, userInfo) => {
         }
 
         let idMontura = null;
-        if (lente.frameId && lente.frameId !== 'Sin montura' && lente.frameId !== '') {
+        if (lente.frameId && lente.frameId !== "Sin montura" && lente.frameId !== "") {
           const monturaResult = await query(
             `
             SELECT m.id_material 
@@ -552,13 +651,12 @@ const registrarVenta = async (ventaData, userInfo) => {
           );
           if (monturaResult.rows.length > 0) {
             idMontura = monturaResult.rows[0].id_material;
-            // Descontar stock de la montura (1 unidad)
             await descontarStockMaterial(idMontura, tiendaId, 1);
           }
         }
 
         let idFranela = null;
-        if (lente.franela && lente.franela !== '') {
+        if (lente.franela && lente.franela !== "") {
           const franelaResult = await query(
             `
             SELECT m.id_material 
@@ -573,13 +671,12 @@ const registrarVenta = async (ventaData, userInfo) => {
           );
           if (franelaResult.rows.length > 0) {
             idFranela = franelaResult.rows[0].id_material;
-            // Descontar stock de la franela (1 unidad)
             await descontarStockMaterial(idFranela, tiendaId, 1);
           }
         }
 
         let idEstuche = null;
-        if (lente.estuche && lente.estuche !== '') {
+        if (lente.estuche && lente.estuche !== "") {
           const estucheResult = await query(
             `
             SELECT m.id_material 
@@ -594,12 +691,10 @@ const registrarVenta = async (ventaData, userInfo) => {
           );
           if (estucheResult.rows.length > 0) {
             idEstuche = estucheResult.rows[0].id_material;
-            // Descontar stock del estuche (1 unidad)
             await descontarStockMaterial(idEstuche, tiendaId, 1);
           }
         }
 
-        // Crear el lente
         const lenteResult = await query(
           `
           INSERT INTO lente (
@@ -611,19 +706,12 @@ const registrarVenta = async (ventaData, userInfo) => {
           ) VALUES ($1, $2, $3, $4, $5)
           RETURNING id_lente
           `,
-          [
-            idOrganico,
-            idMontura,
-            idFranela,
-            idEstuche,
-            lente.tipo || 'Lejos'
-          ]
+          [idOrganico, idMontura, idFranela, idEstuche, lente.tipo || "Lejos"]
         );
 
         const idLente = lenteResult.rows[0].id_lente;
         console.log(`📝 Lente ${i + 1} creado ID:`, idLente);
 
-        // Asociar el lente a la MISMA entrega pendiente
         await query(
           `
           INSERT INTO entrega_detalle_lente (
@@ -632,11 +720,7 @@ const registrarVenta = async (ventaData, userInfo) => {
             total
           ) VALUES ($1, $2, $3)
           `,
-          [
-            idEntrega,
-            idLente,
-            parseFloat(lente.precioTotal || 0)
-          ]
+          [idEntrega, idLente, parseFloat(lente.precioTotal || 0)]
         );
         console.log(`📝 Lente ${i + 1} asociado a entrega ${idEntrega}`);
       }
@@ -645,9 +729,8 @@ const registrarVenta = async (ventaData, userInfo) => {
     // 6. Registrar TODOS los productos adicionales en la MISMA entrega Y DESCONTAR STOCK
     if (productos && productos.length > 0) {
       console.log(`📝 Registrando ${productos.length} productos adicionales...`);
-      
+
       for (const producto of productos) {
-        // Buscar el material por nombre
         const materialResult = await query(
           `
           SELECT m.id_material, mt.stock
@@ -664,7 +747,6 @@ const registrarVenta = async (ventaData, userInfo) => {
         if (materialResult.rows.length > 0) {
           idMaterial = materialResult.rows[0].id_material;
           const cantidad = producto.cantidad || 1;
-          // Descontar stock del producto
           await descontarStockMaterial(idMaterial, tiendaId, cantidad);
         }
 
@@ -682,7 +764,7 @@ const registrarVenta = async (ventaData, userInfo) => {
               idEntrega,
               idMaterial,
               producto.cantidad || 1,
-              parseFloat(producto.precio || 0) * (producto.cantidad || 1)
+              parseFloat(producto.precio || 0) * (producto.cantidad || 1),
             ]
           );
           console.log(`📝 Producto "${producto.nombre}" asociado a entrega ${idEntrega}`);
@@ -696,11 +778,11 @@ const registrarVenta = async (ventaData, userInfo) => {
       let montoEfectivo = 0;
       let montoQR = 0;
 
-      if (metodoPago === 'Efectivo') {
+      if (metodoPago === "Efectivo") {
         montoEfectivo = parseFloat(montoPagado);
-      } else if (metodoPago === 'QR') {
+      } else if (metodoPago === "QR") {
         montoQR = parseFloat(montoPagado);
-      } else if (metodoPago === 'Mixto') {
+      } else if (metodoPago === "Mixto") {
         montoEfectivo = parseFloat(pagoEfectivo || 0);
         montoQR = parseFloat(pagoQR || 0);
       }
@@ -725,7 +807,7 @@ const registrarVenta = async (ventaData, userInfo) => {
           metodoPagoDB,
           montoEfectivo,
           montoQR,
-          `Venta registrada por ${username || 'Sistema'}`
+          `Venta registrada por ${username || "Sistema"}`,
         ]
       );
 
@@ -734,7 +816,6 @@ const registrarVenta = async (ventaData, userInfo) => {
 
       const saldoPendiente = parseFloat(total) - parseFloat(montoPagado);
 
-      // Crear o actualizar pago pendiente
       const pagoPendienteResult = await query(
         `SELECT id_pago_pendiente FROM pago_pendiente WHERE id_pedido = $1`,
         [idPedido]
@@ -763,13 +844,7 @@ const registrarVenta = async (ventaData, userInfo) => {
             estado_pago
           ) VALUES ($1, $2, $3, $4, $5)
           `,
-          [
-            idPedido,
-            parseFloat(total),
-            parseFloat(montoPagado),
-            saldoPendiente,
-            estadoPago
-          ]
+          [idPedido, parseFloat(total), parseFloat(montoPagado), saldoPendiente, estadoPago]
         );
         console.log("✅ Pago pendiente CREADO para pedido:", idPedido);
       }
@@ -779,13 +854,13 @@ const registrarVenta = async (ventaData, userInfo) => {
       }
     }
 
-    console.log(`✅ Venta completada con éxito. Pedido: ${codigoVenta}`);
-    
+    console.log(`✅ Venta completada con éxito. Pedido: ${codigoVentaFinal}`);
+
     return {
       idPedido,
-      codigoVenta,
+      codigoVenta: codigoVentaFinal,
       estadoPago,
-      total
+      total,
     };
   } catch (error) {
     console.error("Error en registrarVenta service:", error);
@@ -824,16 +899,16 @@ const getVentasByClient = async (clientId, userInfo) => {
       [parseInt(clientId), parseInt(negocioId)]
     );
 
-    return result.rows.map(row => ({
+    return result.rows.map((row) => ({
       id: row.id_pedido,
       codigo: row.codigo_pedido,
       fecha: row.fecha_pedido,
       total: parseFloat(row.total || 0),
       subtotal: parseFloat(row.sub_total || 0),
       descuento: parseFloat(row.descuento || 0),
-      motivoDescuento: row.motivo_descripcion || '',
+      motivoDescuento: row.motivo_descripcion || "",
       estadoPago: row.estado_pago,
-      montoPagado: parseFloat(row.monto_pagado || 0)
+      montoPagado: parseFloat(row.monto_pagado || 0),
     }));
   } catch (error) {
     console.error("Error en getVentasByClient service:", error);
@@ -847,5 +922,5 @@ module.exports = {
   searchMateriales,
   searchProductos,
   registrarVenta,
-  getVentasByClient
+  getVentasByClient,
 };

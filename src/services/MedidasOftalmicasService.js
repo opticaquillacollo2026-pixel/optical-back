@@ -2,7 +2,47 @@
 const { query } = require("../../db");
 
 /**
- * Obtener las medidas oftálmicas de un cliente
+ * Formatear una fila de medida a objeto de respuesta
+ */
+const formatMedidaRow = (row) => {
+  if (!row) return null;
+
+  return {
+    id: row.id_medida?.toString() || null,
+    clientId: row.id_persona?.toString() || null,
+    fecha: row.fecha_medida || null,
+    nota: row.nota || "",
+    lejosDerecho: {
+      esfera: row.lejos_od_esfera || "",
+      cilindro: row.lejos_od_cilindro || "",
+      eje: row.lejos_od_eje || "",
+      av: "",
+    },
+    lejosIzquierdo: {
+      esfera: row.lejos_oi_esfera || "",
+      cilindro: row.lejos_oi_cilindro || "",
+      eje: row.lejos_oi_eje || "",
+      av: "",
+    },
+    cercaDerecho: {
+      esfera: row.cerca_od_esfera || "",
+      cilindro: row.cerca_od_cilindro || "",
+      eje: row.cerca_od_eje || "",
+      av: "",
+    },
+    cercaIzquierdo: {
+      esfera: row.cerca_oi_esfera || "",
+      cilindro: row.cerca_oi_cilindro || "",
+      eje: row.cerca_oi_eje || "",
+      av: "",
+    },
+    dip: row.dip || "",
+    add: row.add_medida || "",
+  };
+};
+
+/**
+ * Obtener la medida MÁS RECIENTE de un cliente
  */
 const getMedidas = async (clientId) => {
   try {
@@ -15,19 +55,22 @@ const getMedidas = async (clientId) => {
 
     // Verificar que el cliente existe
     const clienteResult = await query(
-      'SELECT id_persona FROM persona WHERE id_persona = $1 AND estado = $2',
-      [clienteId, 'activo']
+      "SELECT id_persona FROM persona WHERE id_persona = $1 AND estado = $2",
+      [clienteId, "activo"]
     );
 
     if (clienteResult.rows.length === 0) {
       throw new Error("Cliente no encontrado");
     }
 
-    // Obtener las medidas del cliente
+    // Obtener la medida más reciente (por fecha y hora, y por id como desempate)
     const result = await query(
       `
       SELECT 
-        p.id_persona as client_id,
+        m.id_medida,
+        m.id_persona,
+        m.fecha_medida,
+        m.nota,
         m.lejos_od_esfera,
         m.lejos_od_cilindro,
         m.lejos_od_eje,
@@ -41,49 +84,20 @@ const getMedidas = async (clientId) => {
         m.cerca_oi_cilindro,
         m.cerca_oi_eje,
         m.dip,
-        m.add_medida as add
-      FROM persona p
-      LEFT JOIN medida m ON p.id_medida = m.id_medida
-      WHERE p.id_persona = $1
+        m.add_medida
+      FROM medida m
+      WHERE m.id_persona = $1
+      ORDER BY m.fecha_medida DESC NULLS LAST, m.id_medida DESC
+      LIMIT 1
       `,
       [clienteId]
     );
 
-    if (result.rows.length === 0 || !result.rows[0].lejos_od_esfera) {
+    if (result.rows.length === 0) {
       return null;
     }
 
-    const row = result.rows[0];
-
-    return {
-      clientId: row.client_id.toString(),
-      lejosDerecho: {
-        esfera: row.lejos_od_esfera || "",
-        cilindro: row.lejos_od_cilindro || "",
-        eje: row.lejos_od_eje || "",
-        av: ""
-      },
-      lejosIzquierdo: {
-        esfera: row.lejos_oi_esfera || "",
-        cilindro: row.lejos_oi_cilindro || "",
-        eje: row.lejos_oi_eje || "",
-        av: ""
-      },
-      cercaDerecho: {
-        esfera: row.cerca_od_esfera || "",
-        cilindro: row.cerca_od_cilindro || "",
-        eje: row.cerca_od_eje || "",
-        av: ""
-      },
-      cercaIzquierdo: {
-        esfera: row.cerca_oi_esfera || "",
-        cilindro: row.cerca_oi_cilindro || "",
-        eje: row.cerca_oi_eje || "",
-        av: ""
-      },
-      dip: row.dip || "",
-      add: row.add || ""
-    };
+    return formatMedidaRow(result.rows[0]);
   } catch (error) {
     console.error("Error en getMedidas service:", error);
     throw new Error(error.message || "Error al obtener las medidas");
@@ -91,13 +105,118 @@ const getMedidas = async (clientId) => {
 };
 
 /**
+ * Obtener el HISTORIAL COMPLETO de medidas de un cliente
+ */
+const getHistorialMedidas = async (clientId) => {
+  try {
+    console.log("🔍 getHistorialMedidas service - clientId:", clientId);
+
+    const clienteId = parseInt(clientId);
+    if (isNaN(clienteId)) {
+      throw new Error("ID de cliente inválido");
+    }
+
+    // Verificar que el cliente existe
+    const clienteResult = await query(
+      "SELECT id_persona FROM persona WHERE id_persona = $1 AND estado = $2",
+      [clienteId, "activo"]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      throw new Error("Cliente no encontrado");
+    }
+
+    const result = await query(
+      `
+      SELECT 
+        m.id_medida,
+        m.id_persona,
+        m.fecha_medida,
+        m.nota,
+        m.lejos_od_esfera,
+        m.lejos_od_cilindro,
+        m.lejos_od_eje,
+        m.lejos_oi_esfera,
+        m.lejos_oi_cilindro,
+        m.lejos_oi_eje,
+        m.cerca_od_esfera,
+        m.cerca_od_cilindro,
+        m.cerca_od_eje,
+        m.cerca_oi_esfera,
+        m.cerca_oi_cilindro,
+        m.cerca_oi_eje,
+        m.dip,
+        m.add_medida
+      FROM medida m
+      WHERE m.id_persona = $1
+      ORDER BY m.fecha_medida DESC NULLS LAST, m.id_medida DESC
+      `,
+      [clienteId]
+    );
+
+    return result.rows.map(formatMedidaRow);
+  } catch (error) {
+    console.error("Error en getHistorialMedidas service:", error);
+    throw new Error(error.message || "Error al obtener el historial de medidas");
+  }
+};
+
+/**
+ * Obtener una medida por su ID
+ */
+const getMedidaById = async (medidaId) => {
+  try {
+    const id = parseInt(medidaId);
+    if (isNaN(id)) {
+      throw new Error("ID de medida inválido");
+    }
+
+    const result = await query(
+      `
+      SELECT 
+        m.id_medida,
+        m.id_persona,
+        m.fecha_medida,
+        m.nota,
+        m.lejos_od_esfera,
+        m.lejos_od_cilindro,
+        m.lejos_od_eje,
+        m.lejos_oi_esfera,
+        m.lejos_oi_cilindro,
+        m.lejos_oi_eje,
+        m.cerca_od_esfera,
+        m.cerca_od_cilindro,
+        m.cerca_od_eje,
+        m.cerca_oi_esfera,
+        m.cerca_oi_cilindro,
+        m.cerca_oi_eje,
+        m.dip,
+        m.add_medida
+      FROM medida m
+      WHERE m.id_medida = $1
+      `,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return formatMedidaRow(result.rows[0]);
+  } catch (error) {
+    console.error("Error en getMedidaById service:", error);
+    throw new Error(error.message || "Error al obtener la medida");
+  }
+};
+
+/**
  * Calcular medidas de cerca basado en ADD
  */
 const calcularMedidasCerca = (lejosDerecho, lejosIzquierdo, addValue) => {
-  if (!addValue || addValue === '+' || addValue === '-') {
+  if (!addValue || addValue === "+" || addValue === "-") {
     return {
       cercaDerecho: { esfera: "", cilindro: "", eje: "", av: "" },
-      cercaIzquierdo: { esfera: "", cilindro: "", eje: "", av: "" }
+      cercaIzquierdo: { esfera: "", cilindro: "", eje: "", av: "" },
     };
   }
 
@@ -105,24 +224,23 @@ const calcularMedidasCerca = (lejosDerecho, lejosIzquierdo, addValue) => {
   if (isNaN(addNum)) {
     return {
       cercaDerecho: { esfera: "", cilindro: "", eje: "", av: "" },
-      cercaIzquierdo: { esfera: "", cilindro: "", eje: "", av: "" }
+      cercaIzquierdo: { esfera: "", cilindro: "", eje: "", av: "" },
     };
   }
 
   const result = {
     cercaDerecho: { ...lejosDerecho },
-    cercaIzquierdo: { ...lejosIzquierdo }
+    cercaIzquierdo: { ...lejosIzquierdo },
   };
 
-  // Calcular esfera de cerca = esfera_lejos + ADD
-  if (lejosDerecho.esfera) {
+  if (lejosDerecho?.esfera) {
     const farNum = parseFloat(lejosDerecho.esfera);
     if (!isNaN(farNum)) {
       result.cercaDerecho.esfera = (farNum + addNum).toFixed(2);
     }
   }
 
-  if (lejosIzquierdo.esfera) {
+  if (lejosIzquierdo?.esfera) {
     const farNum = parseFloat(lejosIzquierdo.esfera);
     if (!isNaN(farNum)) {
       result.cercaIzquierdo.esfera = (farNum + addNum).toFixed(2);
@@ -133,21 +251,25 @@ const calcularMedidasCerca = (lejosDerecho, lejosIzquierdo, addValue) => {
 };
 
 /**
- * Guardar o actualizar las medidas oftálmicas de un cliente
+ * Guardar medidas oftálmicas de un cliente.
+ * - Si `medidaId` viene: ACTUALIZA esa medida (y su fecha pasa a ser la actual)
+ * - Si no viene: CREA una nueva medida
  */
 const saveMedidas = async (data) => {
   try {
-    const { 
-      clientId, 
-      lejosDerecho, 
-      lejosIzquierdo, 
-      cercaDerecho, 
-      cercaIzquierdo, 
-      dip, 
-      add
+    const {
+      clientId,
+      medidaId,
+      lejosDerecho,
+      lejosIzquierdo,
+      cercaDerecho,
+      cercaIzquierdo,
+      dip,
+      add,
+      nota,
     } = data;
 
-    console.log("🔍 saveMedidas service - clientId:", clientId);
+    console.log("🔍 saveMedidas service - clientId:", clientId, "medidaId:", medidaId);
     console.log("📊 ADD recibido:", add);
 
     const clienteId = parseInt(clientId);
@@ -156,7 +278,7 @@ const saveMedidas = async (data) => {
     }
 
     // ✅ VALIDAR QUE ADD SEA OBLIGATORIO
-    if (!add || add === '+' || add === '-') {
+    if (!add || add === "+" || add === "-") {
       throw new Error("El campo ADD es obligatorio para guardar las medidas");
     }
 
@@ -167,21 +289,18 @@ const saveMedidas = async (data) => {
 
     // Verificar que el cliente existe
     const clienteResult = await query(
-      'SELECT id_persona, id_medida FROM persona WHERE id_persona = $1 AND estado = $2',
-      [clienteId, 'activo']
+      "SELECT id_persona FROM persona WHERE id_persona = $1 AND estado = $2",
+      [clienteId, "activo"]
     );
 
     if (clienteResult.rows.length === 0) {
       throw new Error("Cliente no encontrado");
     }
 
-    const currentIdMedida = clienteResult.rows[0].id_medida;
-
     // ✅ Calcular medidas de cerca automáticamente si no vienen del frontend
     let finalCercaDerecho = cercaDerecho;
     let finalCercaIzquierdo = cercaIzquierdo;
 
-    // Si el frontend no envió medidas de cerca o están vacías, las calculamos
     const tieneCercaDerecho = cercaDerecho?.esfera && cercaDerecho.esfera !== "";
     const tieneCercaIzquierdo = cercaIzquierdo?.esfera && cercaIzquierdo.esfera !== "";
 
@@ -196,8 +315,8 @@ const saveMedidas = async (data) => {
       console.log("📊 Medidas de cerca calculadas automáticamente");
     }
 
-    // Preparar datos de medidas
     const medidas = {
+      id_persona: clienteId,
       lejos_od_esfera: lejosDerecho?.esfera || null,
       lejos_od_cilindro: lejosDerecho?.cilindro || null,
       lejos_od_eje: lejosDerecho?.eje || null,
@@ -211,14 +330,29 @@ const saveMedidas = async (data) => {
       cerca_oi_cilindro: finalCercaIzquierdo?.cilindro || null,
       cerca_oi_eje: finalCercaIzquierdo?.eje || null,
       dip: dip || null,
-      add_medida: add
+      add_medida: add,
+      nota: nota || null,
     };
 
-    let idMedida;
+    let idMedidaResult;
 
-    if (currentIdMedida) {
-      // Actualizar medidas existentes
-      idMedida = currentIdMedida;
+    if (medidaId) {
+      // ✅ ACTUALIZAR medida existente (la fecha pasa a ser la actual)
+      const id = parseInt(medidaId);
+      if (isNaN(id)) {
+        throw new Error("ID de medida inválido");
+      }
+
+      // Verificar que la medida pertenece al cliente
+      const check = await query(
+        "SELECT id_medida FROM medida WHERE id_medida = $1 AND id_persona = $2",
+        [id, clienteId]
+      );
+
+      if (check.rows.length === 0) {
+        throw new Error("La medida no existe o no pertenece al cliente");
+      }
+
       await query(
         `
         UPDATE medida SET
@@ -235,8 +369,10 @@ const saveMedidas = async (data) => {
           cerca_oi_cilindro = $11,
           cerca_oi_eje = $12,
           dip = $13,
-          add_medida = $14
-        WHERE id_medida = $15
+          add_medida = $14,
+          nota = $15,
+          fecha_medida = TIMEZONE('America/La_Paz', NOW())
+        WHERE id_medida = $16
         `,
         [
           medidas.lejos_od_esfera,
@@ -253,14 +389,18 @@ const saveMedidas = async (data) => {
           medidas.cerca_oi_eje,
           medidas.dip,
           medidas.add_medida,
-          idMedida
+          medidas.nota,
+          id,
         ]
       );
+
+      idMedidaResult = id;
     } else {
-      // Crear nuevas medidas
+      // ✅ CREAR nueva medida
       const result = await query(
         `
         INSERT INTO medida (
+          id_persona,
           lejos_od_esfera,
           lejos_od_cilindro,
           lejos_od_eje,
@@ -274,11 +414,14 @@ const saveMedidas = async (data) => {
           cerca_oi_cilindro,
           cerca_oi_eje,
           dip,
-          add_medida
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          add_medida,
+          nota,
+          fecha_medida
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, TIMEZONE('America/La_Paz', NOW()))
         RETURNING id_medida
         `,
         [
+          medidas.id_persona,
           medidas.lejos_od_esfera,
           medidas.lejos_od_cilindro,
           medidas.lejos_od_eje,
@@ -292,21 +435,15 @@ const saveMedidas = async (data) => {
           medidas.cerca_oi_cilindro,
           medidas.cerca_oi_eje,
           medidas.dip,
-          medidas.add_medida
+          medidas.add_medida,
+          medidas.nota,
         ]
       );
-      idMedida = result.rows[0].id_medida;
-
-      // Asociar las medidas al cliente
-      await query(
-        'UPDATE persona SET id_medida = $1 WHERE id_persona = $2',
-        [idMedida, clienteId]
-      );
+      idMedidaResult = result.rows[0].id_medida;
     }
 
-    // Retornar las medidas guardadas
-    return await getMedidas(clienteId);
-
+    // Retornar la medida guardada
+    return await getMedidaById(idMedidaResult);
   } catch (error) {
     console.error("Error en saveMedidas service:", error);
     throw new Error(error.message || "Error al guardar las medidas");
@@ -314,11 +451,11 @@ const saveMedidas = async (data) => {
 };
 
 /**
- * Eliminar las medidas oftálmicas de un cliente
+ * Eliminar una medida específica de un cliente (o todas si no se especifica medidaId)
  */
-const deleteMedidas = async (clientId) => {
+const deleteMedidas = async (clientId, medidaId) => {
   try {
-    console.log("🔍 deleteMedidas service - clientId:", clientId);
+    console.log("🔍 deleteMedidas service - clientId:", clientId, "medidaId:", medidaId);
 
     const clienteId = parseInt(clientId);
     if (isNaN(clienteId)) {
@@ -327,33 +464,36 @@ const deleteMedidas = async (clientId) => {
 
     // Verificar que el cliente existe
     const clienteResult = await query(
-      'SELECT id_persona, id_medida FROM persona WHERE id_persona = $1 AND estado = $2',
-      [clienteId, 'activo']
+      "SELECT id_persona FROM persona WHERE id_persona = $1 AND estado = $2",
+      [clienteId, "activo"]
     );
 
     if (clienteResult.rows.length === 0) {
       throw new Error("Cliente no encontrado");
     }
 
-    const idMedida = clienteResult.rows[0].id_medida;
+    if (medidaId) {
+      // Eliminar una medida específica
+      const id = parseInt(medidaId);
+      if (isNaN(id)) {
+        throw new Error("ID de medida inválido");
+      }
 
-    if (!idMedida) {
-      throw new Error("El cliente no tiene medidas asociadas");
+      const result = await query(
+        "DELETE FROM medida WHERE id_medida = $1 AND id_persona = $2 RETURNING id_medida",
+        [id, clienteId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error("La medida no existe o no pertenece al cliente");
+      }
+
+      return true;
+    } else {
+      // Eliminar TODAS las medidas del cliente
+      await query("DELETE FROM medida WHERE id_persona = $1", [clienteId]);
+      return true;
     }
-
-    // Desasociar la medida del cliente
-    await query(
-      'UPDATE persona SET id_medida = NULL WHERE id_persona = $1',
-      [clienteId]
-    );
-
-    // Eliminar la medida
-    await query(
-      'DELETE FROM medida WHERE id_medida = $1',
-      [idMedida]
-    );
-
-    return true;
   } catch (error) {
     console.error("Error en deleteMedidas service:", error);
     throw new Error(error.message || "Error al eliminar las medidas");
@@ -362,6 +502,8 @@ const deleteMedidas = async (clientId) => {
 
 module.exports = {
   getMedidas,
+  getHistorialMedidas,
+  getMedidaById,
   saveMedidas,
-  deleteMedidas
+  deleteMedidas,
 };
