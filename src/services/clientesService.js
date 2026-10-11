@@ -67,9 +67,6 @@ const getClientes = async ({ negocioId, searchTerm, month }) => {
       LEFT JOIN cliente_zona cz ON p.id_cliente_zona = cz.id_cliente_zona
       WHERE pn.id_negocio = $1
         AND p.estado = 'activo'
-        AND p.id_persona NOT IN (
-          SELECT id_persona FROM usuario WHERE estado = 'activo'
-        )
     `;
 
     const params = [negocioId];
@@ -134,9 +131,6 @@ const searchClientes = async (term, negocioId) => {
       LEFT JOIN cliente_zona cz ON p.id_cliente_zona = cz.id_cliente_zona
       WHERE pn.id_negocio = $1
         AND p.estado = 'activo'
-        AND p.id_persona NOT IN (
-          SELECT id_persona FROM usuario WHERE estado = 'activo'
-        )
         AND (
           p.nombre ILIKE $2 OR
           p.apellido ILIKE $2 OR
