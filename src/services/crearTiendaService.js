@@ -58,8 +58,11 @@ const crearTienda = async (tiendaData, responsableData) => {
     console.log("Negocio creado ID:", idNegocio);
 
     // 5. Crear TIENDA
+    // ============================================
+    // CAMBIO: 1 MES de prueba (30 días), precio 200 Bs
+    // ============================================
     const fechaPago = new Date();
-    fechaPago.setDate(fechaPago.getDate() + 14);
+    fechaPago.setMonth(fechaPago.getMonth() + 1); // +1 mes
 
     const tiendaResult = await query(
       `INSERT INTO tienda (
@@ -140,7 +143,7 @@ const crearTienda = async (tiendaData, responsableData) => {
         carnet: responsableData.carnet.trim(),
         usuario: responsableData.usuario.trim().toLowerCase()
       },
-      mensaje: `Tienda "${tiendaData.nombre}" creada exitosamente. Tienes 14 días gratis.`
+      mensaje: `Tienda "${tiendaData.nombre}" creada exitosamente. Tienes 1 mes de prueba gratis.`
     };
 
   } catch (error) {
