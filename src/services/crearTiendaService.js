@@ -59,7 +59,10 @@ const crearTienda = async (tiendaData, responsableData) => {
 
     // 5. Crear TIENDA
     // ============================================
-    // CAMBIO: 1 MES de prueba (30 días), precio 200 Bs
+    // CAMBIOS:
+    //   - 1 MES de prueba (fecha_pago = hoy + 1 mes)
+    //   - Precio: 200 Bs
+    //   - cant_usuarios: 3
     // ============================================
     const fechaPago = new Date();
     fechaPago.setMonth(fechaPago.getMonth() + 1); // +1 mes
@@ -75,7 +78,7 @@ const crearTienda = async (tiendaData, responsableData) => {
         precio,
         cant_usuarios
       ) 
-       VALUES ($1, $2, $3, $4, $5, 'activo', 200.00, 1) 
+       VALUES ($1, $2, $3, $4, $5, 'activo', 200.00, 3) 
        RETURNING id_tienda`,  
       [
         idNegocio,
@@ -86,7 +89,7 @@ const crearTienda = async (tiendaData, responsableData) => {
       ]
     );
     const idTienda = tiendaResult.rows[0].id_tienda;
-    console.log("Tienda creada ID:", idTienda);
+    console.log("Tienda creada ID:", idTienda, "| cant_usuarios: 3");
 
     // 6. Crear CAJA para la tienda con nombre "Caja + (nombre tienda)"
     const nombreCaja = `Caja ${tiendaData.nombre.trim()}`;
@@ -133,7 +136,9 @@ const crearTienda = async (tiendaData, responsableData) => {
         ubicacion: tiendaData.ubicacion.trim(),
         telefono: tiendaData.telefono.trim(),
         fechaPago: fechaPago.toISOString(),
-        estado: 'activo'
+        estado: 'activo',
+        precio: 200,
+        cantUsuarios: 3
       },
       responsable: {
         id: idPersona,
