@@ -72,8 +72,8 @@ const crearTienda = async (tiendaData, responsableData) => {
         precio,
         cant_usuarios
       ) 
-       VALUES ($1, $2, $3, $4, $5, 'activo', 400.00, 1) 
-       RETURNING id_tienda`,
+       VALUES ($1, $2, $3, $4, $5, 'activo', 200.00, 1) 
+       RETURNING id_tienda`,  
       [
         idNegocio,
         tiendaData.nombre.trim(),
