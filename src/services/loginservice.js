@@ -8,7 +8,6 @@ const authenticateUser = async (username, password) => {
     console.log("=== authenticateUser ===");
     console.log("Username:", username);
     
-    // 1. Buscar usuario en la base de datos
     const userQuery = `
       SELECT 
         u.id_usuario,
@@ -30,48 +29,25 @@ const authenticateUser = async (username, password) => {
     const result = await query(userQuery, [username]);
 
     if (result.rows.length === 0) {
-      console.log("Usuario no encontrado");
-      return {
-        success: false,
-        message: "Usuario no encontrado"
-      };
+      return { success: false, message: "Usuario no encontrado" };
     }
 
     const user = result.rows[0];
-    console.log("Usuario encontrado:", user.usuario, "Rol:", user.rol_nombre);
 
-    // 2. Verificar estado del usuario
     if (user.estado !== 'activo') {
-      console.log("Usuario inactivo");
-      return {
-        success: false,
-        message: "Usuario inactivo"
-      };
+      return { success: false, message: "Usuario inactivo" };
     }
 
-    // 3. Verificar contraseña
     const isPasswordValid = await bcrypt.compare(password, user.password);
-
     if (!isPasswordValid) {
-      console.log("Contraseña incorrecta");
-      return {
-        success: false,
-        message: "Credenciales incorrectas"
-      };
+      return { success: false, message: "Credenciales incorrectas" };
     }
 
-    console.log("Contraseña correcta");
-
-    // 4. Obtener tiendas del usuario SOLO ACTIVAS con LOGO
     let stores = [];
     
-    // SI ES SPIDER ADMIN - NO NECESITA TIENDAS
     if (user.rol_nombre === 'Spider Admin') {
-      console.log("Es Spider Admin - no necesita tiendas");
-      // Spider Admin puede acceder sin tiendas
       stores = [];
     } else {
-      // Para otros roles, obtener solo tiendas activas con LOGO
       const storesQuery = `
         SELECT 
           t.id_tienda,
@@ -79,7 +55,10 @@ const authenticateUser = async (username, password) => {
           t.id_negocio,
           n.nombre_negocio,
           t.estado,
-          t.logo
+          t.logo,
+          t.fecha_pago,
+          t.precio,
+          t.cant_usuarios
         FROM usuario_tienda ut
         INNER JOIN tienda t ON ut.id_tienda = t.id_tienda
         INNER JOIN negocio n ON t.id_negocio = n.id_negocio
@@ -89,30 +68,19 @@ const authenticateUser = async (username, password) => {
 
       const storesResult = await query(storesQuery, [user.id_usuario]);
       stores = storesResult.rows;
-      console.log("Tiendas activas encontradas (usuario):", stores.length);
 
-      // Verificar si el usuario tiene al menos una tienda activa
       if (stores.length === 0) {
-        console.log("El usuario no tiene tiendas activas");
-        return {
-          success: false,
-          message: "Usuario sin tiendas activas"
-        };
+        return { success: false, message: "Usuario sin tiendas activas" };
       }
     }
 
-    // 5. Obtener permisos del usuario
     const permissionsQuery = `
-      SELECT 
-        p.nombre as permiso_nombre,
-        up.tipo
+      SELECT p.nombre as permiso_nombre, up.tipo
       FROM usuario_permiso up
       INNER JOIN permiso p ON up.id_permiso = p.id_permiso
       WHERE up.id_usuario = $1
       UNION
-      SELECT 
-        p.nombre as permiso_nombre,
-        'concedido' as tipo
+      SELECT p.nombre as permiso_nombre, 'concedido' as tipo
       FROM rol_permiso rp
       INNER JOIN permiso p ON rp.id_permiso = p.id_permiso
       WHERE rp.id_rol = $2
@@ -128,10 +96,54 @@ const authenticateUser = async (username, password) => {
       .filter(row => row.tipo === 'revocado')
       .map(row => row.permiso_nombre);
 
-    console.log("Permisos concedidos:", grantedPermissions);
-    console.log("Permisos revocados:", revokedPermissions);
+    const storesWithLogo = stores.map(s => ({
+      id_tienda: s.id_tienda,
+      nombre_tienda: s.nombre_tienda,
+      id_negocio: s.id_negocio,
+      nombre_negocio: s.nombre_negocio,
+      estado: s.estado,
+      logo: s.logo ? s.logo.toString('base64') : null,
+      fecha_pago: s.fecha_pago,
+      precio: s.precio ? parseFloat(s.precio) : null,
+      cant_usuarios: s.cant_usuarios
+    }));
 
-    // 6. Generar token JWT
+    let fechaPagoVencida = false;
+    let fechaPagoPrincipal = null;
+    
+    if (storesWithLogo.length > 0 && storesWithLogo[0].fecha_pago) {
+      const fp = new Date(storesWithLogo[0].fecha_pago);
+      fechaPagoPrincipal = fp.toISOString();
+      
+      const hoyStr = new Date().toISOString().split("T")[0];
+      const fpStr = fp.toISOString().split("T")[0];
+      fechaPagoVencida = fpStr <= hoyStr;
+
+      // ============================================
+      // REGLA: Bloquear si venció hace más de 60 días
+      // ============================================
+      const hoy = new Date();
+      const diffTime = Math.abs(hoy.getTime() - fp.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (fechaPagoVencida && diffDays > 60) {
+        console.log(`[login] Bloqueado. Fecha de pago vencida hace ${diffDays} días.`);
+        
+        // Formatear la fecha de pago para mostrarla en el mensaje
+        const fechaFormateada = fp.toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
+
+        return {
+          success: false,
+          code: "CUENTA_SUSPENDIDA",
+          message: `La fecha de pago ha expirado hace más de 2 meses (fecha de pago: ${fechaFormateada}). Contacte a soporte para reactivar su cuenta.`
+        };
+      }
+    }
+
     const token = jwt.sign(
       {
         id_usuario: user.id_usuario,
@@ -141,19 +153,8 @@ const authenticateUser = async (username, password) => {
         id_rol: user.id_rol
       },
       process.env.JWT_SECRET || "opticavision-secret-key-2024",
-      { expiresIn: "24h" }
+      { expiresIn: "12h" }
     );
-
-    // 7. Preparar datos del usuario para retornar
-    // Convertir logo a base64 si existe
-    const storesWithLogo = stores.map(s => ({
-      id_tienda: s.id_tienda,
-      nombre_tienda: s.nombre_tienda,
-      id_negocio: s.id_negocio,
-      nombre_negocio: s.nombre_negocio,
-      estado: s.estado,
-      logo: s.logo ? s.logo.toString('base64') : null
-    }));
 
     const userData = {
       id_usuario: user.id_usuario,
@@ -165,21 +166,16 @@ const authenticateUser = async (username, password) => {
       id_rol: user.id_rol,
       phoneNumber: user.celular,
       status: user.estado,
-      grantedPermissions: grantedPermissions,
-      revokedPermissions: revokedPermissions,
+      grantedPermissions,
+      revokedPermissions,
       tiendaIds: storesWithLogo.map(s => s.id_tienda),
       tiendaNombre: storesWithLogo.length > 0 ? storesWithLogo[0].nombre_tienda : null,
       negocioId: storesWithLogo.length > 0 ? storesWithLogo[0].id_negocio : null,
       stores: storesWithLogo,
-      // Flag para identificar si es Spider Admin
+      fechaPago: fechaPagoPrincipal,
+      fechaPagoVencida: fechaPagoVencida,
       isSpiderAdmin: user.rol_nombre === 'Spider Admin'
     };
-
-    console.log("Datos de usuario a retornar:");
-    console.log("- es Spider Admin:", userData.isSpiderAdmin);
-    console.log("- tiendaIds:", userData.tiendaIds);
-    console.log("- tiendaNombre:", userData.tiendaNombre);
-    console.log("- stores:", userData.stores.length);
 
     return {
       success: true,
@@ -198,17 +194,8 @@ const authenticateUser = async (username, password) => {
 
 const getUserStores = async (userId, userRole) => {
   try {
-    console.log("=== getUserStores ===");
-    console.log("userId:", userId);
-    console.log("userRole:", userRole);
+    if (userRole === 'Spider Admin') return [];
     
-    // Si es Spider Admin, retornar lista vacía
-    if (userRole === 'Spider Admin') {
-      console.log("Es Spider Admin - sin tiendas");
-      return [];
-    }
-    
-    // Obtener solo tiendas activas con LOGO
     const storesQuery = `
       SELECT 
         t.id_tienda,
@@ -216,88 +203,53 @@ const getUserStores = async (userId, userRole) => {
         t.id_negocio,
         n.nombre_negocio,
         t.estado,
-        t.logo
+        t.logo,
+        t.fecha_pago,
+        t.precio,
+        t.cant_usuarios
       FROM usuario_tienda ut
       INNER JOIN tienda t ON ut.id_tienda = t.id_tienda
       INNER JOIN negocio n ON t.id_negocio = n.id_negocio
-      WHERE ut.id_usuario = $1
-      AND t.estado = 'activo'
+      WHERE ut.id_usuario = $1 AND t.estado = 'activo'
     `;
 
     const result = await query(storesQuery, [userId]);
-    console.log("Tiendas activas encontradas:", result.rows.length);
-    
-    // Convertir logo a base64 si existe
     return result.rows.map(s => ({
       id_tienda: s.id_tienda,
       nombre_tienda: s.nombre_tienda,
       id_negocio: s.id_negocio,
       nombre_negocio: s.nombre_negocio,
       estado: s.estado,
-      logo: s.logo ? s.logo.toString('base64') : null
+      logo: s.logo ? s.logo.toString('base64') : null,
+      fecha_pago: s.fecha_pago,
+      precio: s.precio ? parseFloat(s.precio) : null,
+      cant_usuarios: s.cant_usuarios
     }));
   } catch (error) {
-    console.error("Error al obtener tiendas del usuario:", error);
+    console.error("Error al obtener tiendas:", error);
     return [];
   }
 };
 
 const changePassword = async (userId, currentPassword, newPassword) => {
   try {
-    // 1. Obtener contraseña actual del usuario
-    const userQuery = `
-      SELECT password 
-      FROM usuario 
-      WHERE id_usuario = $1
-    `;
-
+    const userQuery = `SELECT password FROM usuario WHERE id_usuario = $1`;
     const result = await query(userQuery, [userId]);
-
-    if (result.rows.length === 0) {
-      return {
-        success: false,
-        message: "Usuario no encontrado"
-      };
-    }
+    if (result.rows.length === 0) return { success: false, message: "Usuario no encontrado" };
 
     const user = result.rows[0];
-
-    // 2. Verificar contraseña actual
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isPasswordValid) return { success: false, message: "Contraseña actual incorrecta" };
 
-    if (!isPasswordValid) {
-      return {
-        success: false,
-        message: "Contraseña actual incorrecta"
-      };
-    }
-
-    // 3. Validar nueva contraseña
     if (newPassword.length < 6) {
-      return {
-        success: false,
-        message: "La nueva contraseña debe tener al menos 6 caracteres"
-      };
+      return { success: false, message: "La nueva contraseña debe tener al menos 6 caracteres" };
     }
 
-    // 4. Hash de la nueva contraseña
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
-    // 5. Actualizar contraseña en la base de datos
-    const updateQuery = `
-      UPDATE usuario 
-      SET password = $1 
-      WHERE id_usuario = $2
-    `;
-
-    await query(updateQuery, [hashedPassword, userId]);
-
-    return {
-      success: true,
-      message: "Contraseña cambiada exitosamente"
-    };
-
+    await query(`UPDATE usuario SET password = $1 WHERE id_usuario = $2`, [hashedPassword, userId]);
+    return { success: true, message: "Contraseña cambiada exitosamente" };
   } catch (error) {
     console.error("Error al cambiar contraseña:", error);
     throw new Error("Error al cambiar contraseña");
@@ -307,30 +259,14 @@ const changePassword = async (userId, currentPassword, newPassword) => {
 const getUsuarioByUsername = async (username) => {
   try {
     const userQuery = `
-      SELECT 
-        u.id_usuario,
-        u.id_persona,
-        u.usuario,
-        u.password,
-        u.id_rol,
-        u.estado,
-        p.nombre,
-        p.apellido,
-        p.celular,
-        r.nombre as rol_nombre
+      SELECT u.*, p.nombre, p.apellido, p.celular, r.nombre as rol_nombre
       FROM usuario u
       INNER JOIN persona p ON u.id_persona = p.id_persona
       INNER JOIN rol r ON u.id_rol = r.id_rol
       WHERE u.usuario = $1
     `;
-
     const result = await query(userQuery, [username]);
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    return result.rows[0];
+    return result.rows.length > 0 ? result.rows[0] : null;
   } catch (error) {
     console.error("Error al obtener usuario:", error);
     return null;
