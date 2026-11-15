@@ -115,7 +115,7 @@ const mapVentaToFrontend = (row) => {
     metodoPago: row.metodo_pago || 'efectivo',
     subtotal: parseFloat(row.sub_total || 0),
     descuento: parseFloat(row.descuento || 0),
-    motivoDescuento: row.motivo_descripcion || '', // <-- NUEVO CAMPO
+    motivoDescuento: row.motivo_descripcion || '',
     total: parseFloat(row.total || 0),
     clientName: row.cliente_nombre || 'Cliente',
     tiendaId: row.id_tienda?.toString(),
@@ -127,11 +127,7 @@ const mapVentaToFrontend = (row) => {
 };
 
 // ============================================
-// GET - OBTENER VENTAS CON FILTROS (CORREGIDO)
-// ============================================
-
-// ============================================
-// GET - OBTENER VENTAS CON FILTROS (CORREGIDO)
+// GET - OBTENER VENTAS CON FILTROS
 // ============================================
 
 const getVentas = async (filtros, userInfo) => {
@@ -154,7 +150,6 @@ const getVentas = async (filtros, userInfo) => {
       return [];
     }
 
-    // 🔥 CONSULTA CORREGIDA: Cada registro de venta es individual
     let queryText = `
       SELECT 
         v.id_venta,
@@ -184,7 +179,6 @@ const getVentas = async (filtros, userInfo) => {
     const params = [parseInt(negocioId)];
     let paramIndex = 2;
 
-    // Filtro por tienda
     if (tiendaId && tiendaId !== 'todas') {
       queryText += ` AND p.id_tienda = $${paramIndex}`;
       params.push(parseInt(tiendaId));
@@ -197,7 +191,6 @@ const getVentas = async (filtros, userInfo) => {
       paramIndex++;
     }
 
-    // Filtro por búsqueda
     if (searchTerm && searchTerm.trim() !== '') {
       const searchPattern = `%${searchTerm.trim()}%`;
       queryText += ` AND (
@@ -210,7 +203,6 @@ const getVentas = async (filtros, userInfo) => {
       paramIndex++;
     }
 
-    // Filtro por método de pago
     if (selectedMetodoPago && selectedMetodoPago !== 'all') {
       if (selectedMetodoPago === 'efectivo') {
         queryText += ` AND v.monto_efectivo IS NOT NULL AND v.monto_efectivo > 0`;
@@ -221,7 +213,6 @@ const getVentas = async (filtros, userInfo) => {
       }
     }
 
-    // Filtro por fecha (usa la fecha de la venta, no la del pedido)
     const { dateCondition, params: dateParams, paramIndex: newParamIndex } = buildDateFilter(
       dateFilterType,
       specificDate,
@@ -233,7 +224,6 @@ const getVentas = async (filtros, userInfo) => {
     params.push(...dateParams);
     paramIndex = newParamIndex;
 
-    // Orden por fecha de venta
     queryText += ` ORDER BY v.fecha_hora ${sortDirection === 'desc' ? 'DESC' : 'ASC'}`;
 
     console.log("📝 Query ejecutada:", queryText);
@@ -245,12 +235,9 @@ const getVentas = async (filtros, userInfo) => {
       return [];
     }
 
-    // Convertir cada fila a formato frontend
     const ventas = result.rows.map(row => mapVentaToFrontend(row));
 
-    // 🔥 Cargar lentes y productos adicionales para cada venta
     for (let venta of ventas) {
-      // Obtener el id_pedido desde la venta
       const pedidoResult = await query(
         `SELECT id_pedido FROM venta WHERE id_venta = $1`,
         [parseInt(venta.id)]
@@ -259,7 +246,6 @@ const getVentas = async (filtros, userInfo) => {
       if (pedidoResult.rows.length === 0) continue;
       const idPedido = pedidoResult.rows[0].id_pedido;
 
-      // Obtener lentes
       const lentesResult = await query(
         `
         SELECT 
@@ -292,7 +278,6 @@ const getVentas = async (filtros, userInfo) => {
         total: parseFloat(l.total_lente || 0)
       }));
 
-      // Obtener productos adicionales
       const materialesResult = await query(
         `
         SELECT 
@@ -379,7 +364,7 @@ const getVentaById = async (id, userInfo) => {
       usuario: row.usuario || 'Sistema',
       subtotal: parseFloat(row.sub_total || 0),
       descuento: parseFloat(row.descuento || 0),
-      motivoDescuento: row.motivo_descripcion || '', // <-- NUEVO CAMPO
+      motivoDescuento: row.motivo_descripcion || '',
       total: parseFloat(row.total || 0),
       metodoPago: row.metodo_pago || 'efectivo',
       clientName: row.cliente_nombre || 'Cliente',
@@ -435,7 +420,6 @@ const getVentaById = async (id, userInfo) => {
       const grupo = `Lente ${l.tipo_lente || 'No especificado'}`;
       const totalLente = parseFloat(l.total_lente || 0);
       
-      // Título del lente
       venta.items.push({
         nombre: `Lente ${l.tipo_lente || 'No especificado'}`,
         cantidad: 1,
@@ -443,7 +427,7 @@ const getVentaById = async (id, userInfo) => {
         subtotal: 0,
         esLente: true,
         grupo: grupo,
-        esTituloLente: true // <-- MARCADOR PARA TÍTULO
+        esTituloLente: true
       });
       
       if (l.frame) {
@@ -528,7 +512,6 @@ const getVentaById = async (id, userInfo) => {
     const materialesResult = await query(materialesQuery, materialesParams);
 
     if (materialesResult.rows.length > 0) {
-      // Agregar título de productos adicionales
       venta.items.push({
         nombre: 'Productos Adicionales',
         cantidad: 1,
@@ -536,7 +519,7 @@ const getVentaById = async (id, userInfo) => {
         subtotal: 0,
         esLente: false,
         grupo: 'Productos Adicionales',
-        esTituloLente: true // <-- MARCADOR PARA TÍTULO
+        esTituloLente: true
       });
     }
 
@@ -710,7 +693,7 @@ const getResumenVentas = async (filtros, userInfo) => {
 };
 
 // ============================================
-// GET - RESUMEN POR CLIENTE (CORREGIDO)
+// GET - RESUMEN POR CLIENTE
 // ============================================
 
 const getResumenClientes = async (filtros, userInfo) => {
@@ -796,7 +779,7 @@ const getResumenClientes = async (filtros, userInfo) => {
 };
 
 // ============================================
-// GET - ESTADÍSTICAS RÁPIDAS (CORREGIDO)
+// GET - ESTADÍSTICAS RÁPIDAS
 // ============================================
 
 const getEstadisticasRapidas = async (tiendaIdFiltro, userInfo) => {
@@ -940,11 +923,69 @@ const getTiposFiltroFecha = async () => {
 };
 
 // ============================================
-// DELETE - ANULAR VENTA (CORREGIDO)
+// HELPER: REINGRESAR STOCK DE UN MATERIAL
+// ============================================
+// Reglas:
+//   - Si NO existe registro en material_tienda → no controla stock → no reingresa (return false)
+//   - Si existe registro → reingresa cantidad y registra movimiento
+// Devuelve true si se reingresó, false si no se controlaba stock.
+
+const reingresarStockMaterial = async (client, idMaterial, tiendaId, cantidad, userId, descripcion) => {
+  if (!idMaterial || cantidad <= 0) return false;
+
+  const stockResult = await client.query(
+    `
+    SELECT stock, id_material_tienda
+    FROM material_tienda
+    WHERE id_material = $1 AND id_tienda = $2
+    `,
+    [parseInt(idMaterial), parseInt(tiendaId)]
+  );
+
+  if (stockResult.rows.length === 0) {
+    // No hay registro → material sin control de stock → no reingresa
+    console.log(`ℹ️ Material ${idMaterial} sin registro en tienda ${tiendaId}. No se reingresa stock.`);
+    return false;
+  }
+
+  const stockAnterior = parseInt(stockResult.rows[0].stock) || 0;
+  const idMaterialTienda = stockResult.rows[0].id_material_tienda;
+  const stockNuevo = stockAnterior + cantidad;
+
+  await client.query(
+    `
+    UPDATE material_tienda
+    SET stock = $1
+    WHERE id_material_tienda = $2
+    `,
+    [stockNuevo, idMaterialTienda]
+  );
+
+  await client.query(
+    `
+    INSERT INTO movimientos_stock (
+      id_material_tienda,
+      id_usuario,
+      cantidad_anterior,
+      cantidad_nueva,
+      cantidad_modificada,
+      fecha_movimiento
+    )
+    VALUES ($1, $2, $3, $4, $5, TIMEZONE('America/La_Paz', NOW()))
+    `,
+    [idMaterialTienda, userId, stockAnterior, stockNuevo, cantidad]
+  );
+
+  console.log(`✅ Stock reingresado: Material ${idMaterial}, Tienda ${tiendaId}, ${cantidad} unidades (${stockAnterior} → ${stockNuevo}). ${descripcion || ''}`);
+  return true;
+};
+
+// ============================================
+// DELETE - ANULAR VENTA (CON REINGRESO COMPLETO DE STOCK)
 // ============================================
 
 const anularVenta = async (id, userInfo) => {
-  const { negocioId, tiendaId, userId, username } = userInfo;
+  const { negocioId, userId, username } = userInfo;
 
   console.log("🔍 anularVenta service - id:", id, "userInfo:", userInfo);
 
@@ -955,6 +996,10 @@ const anularVenta = async (id, userInfo) => {
 
   if (!negocioId) {
     throw new Error("Negocio ID es requerido");
+  }
+
+  if (!userId) {
+    throw new Error("Usuario ID es requerido para registrar movimientos de stock");
   }
 
   const client = await pool.connect();
@@ -1010,76 +1055,122 @@ const anularVenta = async (id, userInfo) => {
 
     const idEntrega = entregaResult.rows.length > 0 ? entregaResult.rows[0].id_entrega_pendiente : null;
 
-    // 3. OBTENER Y REINGRESAR STOCK DE MATERIALES DE LA ENTREGA
+    // 3. REINGRESAR STOCK DE LENTES (MONTURA, FRANELA, ESTUCHE)
+    //    Cada lente descontó 1 unidad de montura, 1 de franela y 1 de estuche al vender.
+    if (idEntrega) {
+      const lentesEntrega = await client.query(
+        `
+        SELECT 
+          edl.id_lente,
+          l.id_montura,
+          l.id_franela,
+          l.id_estuche,
+          l.tipo_lente
+        FROM entrega_detalle_lente edl
+        INNER JOIN lente l ON edl.id_lente = l.id_lente
+        WHERE edl.id_entrega_pendiente = $1
+        `,
+        [idEntrega]
+      );
+
+      for (const lente of lentesEntrega.rows) {
+        if (lente.id_montura) {
+          await reingresarStockMaterial(
+            client,
+            lente.id_montura,
+            tiendaIdPedido,
+            1,
+            userId,
+            `Anulación venta ${venta.codigo_pedido} - Montura lente ${lente.tipo_lente}`
+          );
+        }
+        if (lente.id_franela) {
+          await reingresarStockMaterial(
+            client,
+            lente.id_franela,
+            tiendaIdPedido,
+            1,
+            userId,
+            `Anulación venta ${venta.codigo_pedido} - Franela lente ${lente.tipo_lente}`
+          );
+        }
+        if (lente.id_estuche) {
+          await reingresarStockMaterial(
+            client,
+            lente.id_estuche,
+            tiendaIdPedido,
+            1,
+            userId,
+            `Anulación venta ${venta.codigo_pedido} - Estuche lente ${lente.tipo_lente}`
+          );
+        }
+      }
+    }
+
+    // 4. REINGRESAR STOCK DE PRODUCTOS ADICIONALES
+    //    Cada producto descontó `cantidad` unidades al vender.
     if (idEntrega) {
       const materialesEntrega = await client.query(
         `
         SELECT 
           edm.id_material,
-          edm.cantidad,
-          mt.id_material_tienda
+          edm.cantidad
         FROM entrega_detalle_material edm
-        INNER JOIN material_tienda mt ON mt.id_material = edm.id_material AND mt.id_tienda = $1
-        WHERE edm.id_entrega_pendiente = $2
+        WHERE edm.id_entrega_pendiente = $1
         `,
-        [tiendaIdPedido, idEntrega]
+        [idEntrega]
       );
 
       for (const mat of materialesEntrega.rows) {
-        if (mat.id_material_tienda) {
-          const stockAntes = await client.query(
-            `SELECT stock FROM material_tienda WHERE id_material_tienda = $1`,
-            [mat.id_material_tienda]
-          );
-
-          const stockAnterior = stockAntes.rows[0]?.stock || 0;
-
-          await client.query(
-            `
-            UPDATE material_tienda 
-            SET stock = stock + $1 
-            WHERE id_material_tienda = $2
-            `,
-            [mat.cantidad, mat.id_material_tienda]
-          );
-
-          await client.query(
-            `
-            INSERT INTO movimientos_stock (
-              id_material_tienda,
-              id_usuario,
-              cantidad_anterior,
-              cantidad_nueva,
-              cantidad_modificada,
-              fecha_movimiento
-            )
-            VALUES ($1, $2, $3, $4, $5, TIMEZONE('America/La_Paz', NOW()))
-            `,
-            [mat.id_material_tienda, userId, stockAnterior, stockAnterior + mat.cantidad, mat.cantidad]
-          );
-        }
+        const cantidad = parseInt(mat.cantidad) || 1;
+        await reingresarStockMaterial(
+          client,
+          mat.id_material,
+          tiendaIdPedido,
+          cantidad,
+          userId,
+          `Anulación venta ${venta.codigo_pedido} - Producto adicional`
+        );
       }
+    }
 
-      // 4. ELIMINAR DETALLES DE LENTES
+    // 5. ELIMINAR DETALLES DE LENTES Y OBTENER IDs DE LENTES PARA BORRAR
+    let idsLentesAEliminar = [];
+    if (idEntrega) {
+      const lentesIdsResult = await client.query(
+        `SELECT id_lente FROM entrega_detalle_lente WHERE id_entrega_pendiente = $1`,
+        [idEntrega]
+      );
+      idsLentesAEliminar = lentesIdsResult.rows.map(r => r.id_lente);
+
       await client.query(
         `DELETE FROM entrega_detalle_lente WHERE id_entrega_pendiente = $1`,
         [idEntrega]
       );
 
-      // 5. ELIMINAR DETALLES DE MATERIALES
+      // 6. ELIMINAR DETALLES DE MATERIALES
       await client.query(
         `DELETE FROM entrega_detalle_material WHERE id_entrega_pendiente = $1`,
         [idEntrega]
       );
 
-      // 6. ELIMINAR LA ENTREGA PENDIENTE
+      // 7. ELIMINAR LA ENTREGA PENDIENTE
       await client.query(
         `DELETE FROM entrega_pendiente WHERE id_entrega_pendiente = $1`,
         [idEntrega]
       );
     }
 
-    // 7. OBTENER LA CAJA DE LA TIENDA
+    // 8. ELIMINAR LOS REGISTROS DE LENTE (evita huérfanos)
+    if (idsLentesAEliminar.length > 0) {
+      await client.query(
+        `DELETE FROM lente WHERE id_lente = ANY($1::int[])`,
+        [idsLentesAEliminar]
+      );
+      console.log(`✅ Eliminados ${idsLentesAEliminar.length} registros de lente`);
+    }
+
+    // 9. OBTENER LA CAJA DE LA TIENDA
     const cajaResult = await client.query(
       `
       SELECT id_caja, total 
@@ -1096,20 +1187,19 @@ const anularVenta = async (id, userInfo) => {
     const caja = cajaResult.rows[0];
     const idCaja = caja.id_caja;
 
-    // 8. OBTENER EL TOTAL ACTUAL DE LA CAJA
+    // 10. OBTENER EL TOTAL ACTUAL DE LA CAJA
     const cajaActual = await client.query(
       `SELECT total FROM caja WHERE id_caja = $1`,
       [idCaja]
     );
     const totalActual = parseFloat(cajaActual.rows[0]?.total || 0);
 
-    // 9. SI HAY EFECTIVO QUE DEVOLVER, RESTAR DE LA CAJA
+    // 11. SI HAY EFECTIVO QUE DEVOLVER, RESTAR DE LA CAJA
     if (totalEfectivoVenta > 0) {
       const nuevoTotal = Math.max(0, totalActual - totalEfectivoVenta);
 
       console.log(`💰 Caja: total actual ${totalActual} Bs, restando ${totalEfectivoVenta} Bs = ${nuevoTotal} Bs`);
 
-      // Actualizar el total de la caja
       await client.query(
         `
         UPDATE caja 
@@ -1119,7 +1209,6 @@ const anularVenta = async (id, userInfo) => {
         [nuevoTotal, idCaja]
       );
 
-      // Registrar el egreso por anulación
       await client.query(
         `
         INSERT INTO transaccion_caja (
@@ -1159,20 +1248,20 @@ const anularVenta = async (id, userInfo) => {
       console.log(`✅ Registrado egreso de ${totalEfectivoVenta} Bs por anulación`);
     }
 
-    // 10. ELIMINAR LA TRANSACCIÓN ORIGINAL DE CAJA (si existe)
+    // 12. ELIMINAR LA TRANSACCIÓN ORIGINAL DE CAJA (si existe)
     await client.query(
       `DELETE FROM transaccion_caja WHERE id_venta = $1 AND id_caja = $2`,
       [idNum, idCaja]
     );
     console.log(`✅ Eliminada transacción de caja original`);
 
-    // 11. ELIMINAR EL REGISTRO DE VENTA
+    // 13. ELIMINAR EL REGISTRO DE VENTA
     await client.query(
       `DELETE FROM venta WHERE id_venta = $1`,
       [idNum]
     );
 
-    // 12. VERIFICAR SI QUEDAN MÁS VENTAS PARA ESTE PEDIDO
+    // 14. VERIFICAR SI QUEDAN MÁS VENTAS PARA ESTE PEDIDO
     const ventasRestantes = await client.query(
       `SELECT COUNT(*) as total FROM venta WHERE id_pedido = $1`,
       [idPedido]
@@ -1180,15 +1269,13 @@ const anularVenta = async (id, userInfo) => {
 
     const restantes = parseInt(ventasRestantes.rows[0]?.total || 0);
 
-    // 13. SI NO QUEDAN MÁS VENTAS, ELIMINAR EL PEDIDO
+    // 15. SI NO QUEDAN MÁS VENTAS, ELIMINAR EL PEDIDO
     if (restantes === 0) {
-      // Eliminar pago pendiente
       await client.query(
         `DELETE FROM pago_pendiente WHERE id_pedido = $1`,
         [idPedido]
       );
 
-      // Eliminar el pedido
       await client.query(
         `DELETE FROM pedido WHERE id_pedido = $1`,
         [idPedido]

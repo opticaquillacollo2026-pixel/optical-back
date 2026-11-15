@@ -110,6 +110,11 @@ const getOrganicPrice = async (organicoId, grado, userInfo) => {
 // ============================================
 // BUSCAR MATERIALES POR TIPO (CON FILTRO POR TIENDA)
 // ============================================
+// IMPORTANTE:
+//   - LEFT JOIN material_tienda para que aparezcan materiales
+//     que NO tienen registro en esta tienda (sin control de stock).
+//   - `stock` = null cuando no hay registro → "no controla stock"
+//   - `stock` = número (incluye 0) cuando SÍ hay registro → "controla stock"
 
 const searchMateriales = async (tipo, term, userInfo) => {
   try {
@@ -120,13 +125,16 @@ const searchMateriales = async (tipo, term, userInfo) => {
         m.id_material as id,
         m.nombre_material as nombre,
         m.codigo_material as codigo,
-        m.precio_compra as precioCompra,
-        m.precio_venta as precioVenta,
+        m.precio_compra as "precioCompra",
+        m.precio_venta as "precioVenta",
         tm.nombre_tipo_material as categoria,
-        COALESCE(mt.stock, 0) as stock
+        mt.stock as stock,
+        (mt.id_material_tienda IS NOT NULL) as "tieneRegistroStock"
       FROM material m
       INNER JOIN tipo_material tm ON m.id_tipo_material = tm.id_tipo_material
-      INNER JOIN material_tienda mt ON m.id_material = mt.id_material AND mt.id_tienda = $3
+      LEFT JOIN material_tienda mt 
+        ON m.id_material = mt.id_material 
+       AND mt.id_tienda = $3
       WHERE m.id_negocio = $1
         AND tm.nombre_tipo_material ILIKE $2
     `;
@@ -142,15 +150,23 @@ const searchMateriales = async (tipo, term, userInfo) => {
 
     const result = await query(queryText, params);
 
-    return result.rows.map((row) => ({
-      id: row.id,
-      nombre: row.nombre,
-      codigo: row.codigo || "",
-      categoria: row.categoria,
-      precioCompra: parseFloat(row.preciocompra || 0),
-      precioVenta: parseFloat(row.precioventa || 0),
-      stock: parseInt(row.stock || 0),
-    }));
+    return result.rows.map((row) => {
+      const tieneRegistro = row.tieneRegistroStock === true;
+      const stockNum = tieneRegistro ? parseInt(row.stock || 0) : null;
+
+      return {
+        id: row.id,
+        nombre: row.nombre,
+        codigo: row.codigo || "",
+        categoria: row.categoria,
+        precioCompra: parseFloat(row.precioCompra || 0),
+        precioVenta: parseFloat(row.precioVenta || 0),
+        // stock = null  → no hay registro en material_tienda → no controla stock
+        // stock = num   → hay registro (puede ser 0) → controla stock
+        stock: stockNum,
+        controlaStock: tieneRegistro,
+      };
+    });
   } catch (error) {
     console.error("Error en searchMateriales service:", error);
     return [];
@@ -160,6 +176,7 @@ const searchMateriales = async (tipo, term, userInfo) => {
 // ============================================
 // BUSCAR PRODUCTOS ADICIONALES (CON FILTRO POR TIENDA)
 // ============================================
+// Mismo criterio: LEFT JOIN para que aparezcan productos sin registro.
 
 const searchProductos = async (term, userInfo) => {
   try {
@@ -170,10 +187,14 @@ const searchProductos = async (term, userInfo) => {
         m.id_material as id,
         m.nombre_material as nombre,
         m.precio_venta as precio,
-        tm.nombre_tipo_material as tipo
+        tm.nombre_tipo_material as tipo,
+        mt.stock as stock,
+        (mt.id_material_tienda IS NOT NULL) as "tieneRegistroStock"
       FROM material m
       INNER JOIN tipo_material tm ON m.id_tipo_material = tm.id_tipo_material
-      INNER JOIN material_tienda mt ON m.id_material = mt.id_material AND mt.id_tienda = $2
+      LEFT JOIN material_tienda mt 
+        ON m.id_material = mt.id_material 
+       AND mt.id_tienda = $2
       WHERE m.id_negocio = $1
     `;
 
@@ -188,12 +209,19 @@ const searchProductos = async (term, userInfo) => {
 
     const result = await query(queryText, params);
 
-    return result.rows.map((row) => ({
-      id: row.id,
-      nombre: row.nombre,
-      precio: parseFloat(row.precio || 0),
-      tipo: row.tipo || "Producto",
-    }));
+    return result.rows.map((row) => {
+      const tieneRegistro = row.tieneRegistroStock === true;
+      const stockNum = tieneRegistro ? parseInt(row.stock || 0) : null;
+
+      return {
+        id: row.id,
+        nombre: row.nombre,
+        precio: parseFloat(row.precio || 0),
+        tipo: row.tipo || "Producto",
+        stock: stockNum,
+        controlaStock: tieneRegistro,
+      };
+    });
   } catch (error) {
     console.error("Error en searchProductos service:", error);
     return [];
@@ -250,6 +278,10 @@ const generarCodigoVenta = async (tiendaId) => {
 // ============================================
 // DESCONTAR STOCK DE MATERIALES
 // ============================================
+// Reglas:
+//   - Si NO existe registro en material_tienda → no controla stock → OK (return true)
+//   - Si existe registro y stock >= cantidad → descuenta
+//   - Si existe registro y stock < cantidad → ERROR (stock insuficiente)
 
 const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
   try {
@@ -263,16 +295,18 @@ const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
     );
 
     if (stockResult.rows.length === 0) {
-      console.warn(`⚠️ Material ${idMaterial} no encontrado en tienda ${tiendaId}`);
-      return false;
+      // No hay registro → el material no se controla en esta tienda
+      console.log(`ℹ️ Material ${idMaterial} sin registro en tienda ${tiendaId}. No se controla stock.`);
+      return true;
     }
 
     const currentStock = parseInt(stockResult.rows[0].stock) || 0;
     const idMaterialTienda = stockResult.rows[0].id_material_tienda;
 
     if (currentStock < cantidad) {
-      console.warn(`⚠️ Stock insuficiente para material ${idMaterial}: ${currentStock} < ${cantidad}`);
-      return false;
+      throw new Error(
+        `Stock insuficiente para el material seleccionado (disponible: ${currentStock}, requerido: ${cantidad})`
+      );
     }
 
     const newStock = currentStock - cantidad;
@@ -290,7 +324,7 @@ const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
     return true;
   } catch (error) {
     console.error("Error descontando stock:", error);
-    throw new Error(`Error al descontar stock del material: ${error.message}`);
+    throw new Error(error.message || `Error al descontar stock del material`);
   }
 };
 
@@ -519,8 +553,6 @@ const registrarVenta = async (ventaData, userInfo) => {
   console.log("📝 registrarVenta - tiendaId:", tiendaId, "negocioId:", negocioId);
   console.log("📝 Cantidad de lentes:", lentes?.length || 0);
   console.log("📝 Cantidad de productos:", productos?.length || 0);
-  console.log("📝 Motivo descuento:", motivoDescuento || "Sin motivo");
-  console.log("📝 medidaId (si viene del historial):", medidas?.medidaId || "NUEVA");
 
   try {
     // 1. Generar código de venta
@@ -528,21 +560,17 @@ const registrarVenta = async (ventaData, userInfo) => {
     console.log("📝 Código de venta generado:", codigoVenta);
 
     // 2. Guardar la medida del cliente (historial 1:N)
-    //    - Si medidas.medidaId viene → actualiza esa medida (fecha a hoy)
-    //    - Si no → crea una nueva medida
     if (medidas && clientId) {
       try {
         await guardarMedidaCliente(clientId, medidas);
       } catch (medidaError) {
         console.warn("⚠️ No se pudo guardar la medida del cliente:", medidaError.message);
-        // No abortamos la venta si falla el guardado de la medida
       }
     }
 
     // 3. Crear UN SOLO pedido para TODOS los lentes y productos
     const estadoPago = montoPagado >= total ? "Completo" : montoPagado > 0 ? "Parcial" : "Pendiente";
 
-    // Insertar pedido con reintento en caso de colisión de código
     let idPedido = null;
     let codigoVentaFinal = codigoVenta;
     let intentos = 0;
@@ -642,12 +670,11 @@ const registrarVenta = async (ventaData, userInfo) => {
             SELECT m.id_material 
             FROM material m
             INNER JOIN tipo_material tm ON m.id_tipo_material = tm.id_tipo_material
-            INNER JOIN material_tienda mt ON m.id_material = mt.id_material AND mt.id_tienda = $3
             WHERE m.id_material = $1 
               AND m.id_negocio = $2 
               AND tm.nombre_tipo_material = 'Montura'
             `,
-            [parseInt(lente.frameId), parseInt(negocioId), parseInt(tiendaId)]
+            [parseInt(lente.frameId), parseInt(negocioId)]
           );
           if (monturaResult.rows.length > 0) {
             idMontura = monturaResult.rows[0].id_material;
@@ -662,12 +689,11 @@ const registrarVenta = async (ventaData, userInfo) => {
             SELECT m.id_material 
             FROM material m
             INNER JOIN tipo_material tm ON m.id_tipo_material = tm.id_tipo_material
-            INNER JOIN material_tienda mt ON m.id_material = mt.id_material AND mt.id_tienda = $3
             WHERE m.id_material = $1 
               AND m.id_negocio = $2 
               AND tm.nombre_tipo_material = 'Franela'
             `,
-            [parseInt(lente.franela), parseInt(negocioId), parseInt(tiendaId)]
+            [parseInt(lente.franela), parseInt(negocioId)]
           );
           if (franelaResult.rows.length > 0) {
             idFranela = franelaResult.rows[0].id_material;
@@ -682,12 +708,11 @@ const registrarVenta = async (ventaData, userInfo) => {
             SELECT m.id_material 
             FROM material m
             INNER JOIN tipo_material tm ON m.id_tipo_material = tm.id_tipo_material
-            INNER JOIN material_tienda mt ON m.id_material = mt.id_material AND mt.id_tienda = $3
             WHERE m.id_material = $1 
               AND m.id_negocio = $2 
               AND tm.nombre_tipo_material = 'Estuche'
             `,
-            [parseInt(lente.estuche), parseInt(negocioId), parseInt(tiendaId)]
+            [parseInt(lente.estuche), parseInt(negocioId)]
           );
           if (estucheResult.rows.length > 0) {
             idEstuche = estucheResult.rows[0].id_material;
@@ -735,7 +760,9 @@ const registrarVenta = async (ventaData, userInfo) => {
           `
           SELECT m.id_material, mt.stock
           FROM material m
-          INNER JOIN material_tienda mt ON m.id_material = mt.id_material AND mt.id_tienda = $3
+          LEFT JOIN material_tienda mt 
+            ON m.id_material = mt.id_material 
+           AND mt.id_tienda = $3
           WHERE m.nombre_material ILIKE $1 
             AND m.id_negocio = $2 
           LIMIT 1
