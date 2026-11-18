@@ -110,11 +110,6 @@ const getOrganicPrice = async (organicoId, grado, userInfo) => {
 // ============================================
 // BUSCAR MATERIALES POR TIPO (CON FILTRO POR TIENDA)
 // ============================================
-// IMPORTANTE:
-//   - LEFT JOIN material_tienda para que aparezcan materiales
-//     que NO tienen registro en esta tienda (sin control de stock).
-//   - `stock` = null cuando no hay registro → "no controla stock"
-//   - `stock` = número (incluye 0) cuando SÍ hay registro → "controla stock"
 
 const searchMateriales = async (tipo, term, userInfo) => {
   try {
@@ -129,7 +124,7 @@ const searchMateriales = async (tipo, term, userInfo) => {
         m.precio_venta as "precioVenta",
         tm.nombre_tipo_material as categoria,
         mt.stock as stock,
-        (mt.id_material_tienda IS NOT NULL) as "tieneRegistroStock"
+        (mt.id_material_tienda IS NOT NULL AND mt.stock IS NOT NULL) as "tieneRegistroStock"
       FROM material m
       INNER JOIN tipo_material tm ON m.id_tipo_material = tm.id_tipo_material
       LEFT JOIN material_tienda mt 
@@ -152,7 +147,8 @@ const searchMateriales = async (tipo, term, userInfo) => {
 
     return result.rows.map((row) => {
       const tieneRegistro = row.tieneRegistroStock === true;
-      const stockNum = tieneRegistro ? parseInt(row.stock || 0) : null;
+      // Si tiene registro, el stock es el número. Si no, es null.
+      const stockNum = tieneRegistro ? parseInt(row.stock) : null;
 
       return {
         id: row.id,
@@ -161,8 +157,6 @@ const searchMateriales = async (tipo, term, userInfo) => {
         categoria: row.categoria,
         precioCompra: parseFloat(row.precioCompra || 0),
         precioVenta: parseFloat(row.precioVenta || 0),
-        // stock = null  → no hay registro en material_tienda → no controla stock
-        // stock = num   → hay registro (puede ser 0) → controla stock
         stock: stockNum,
         controlaStock: tieneRegistro,
       };
@@ -176,7 +170,6 @@ const searchMateriales = async (tipo, term, userInfo) => {
 // ============================================
 // BUSCAR PRODUCTOS ADICIONALES (CON FILTRO POR TIENDA)
 // ============================================
-// Mismo criterio: LEFT JOIN para que aparezcan productos sin registro.
 
 const searchProductos = async (term, userInfo) => {
   try {
@@ -189,7 +182,7 @@ const searchProductos = async (term, userInfo) => {
         m.precio_venta as precio,
         tm.nombre_tipo_material as tipo,
         mt.stock as stock,
-        (mt.id_material_tienda IS NOT NULL) as "tieneRegistroStock"
+        (mt.id_material_tienda IS NOT NULL AND mt.stock IS NOT NULL) as "tieneRegistroStock"
       FROM material m
       INNER JOIN tipo_material tm ON m.id_tipo_material = tm.id_tipo_material
       LEFT JOIN material_tienda mt 
@@ -211,7 +204,7 @@ const searchProductos = async (term, userInfo) => {
 
     return result.rows.map((row) => {
       const tieneRegistro = row.tieneRegistroStock === true;
-      const stockNum = tieneRegistro ? parseInt(row.stock || 0) : null;
+      const stockNum = tieneRegistro ? parseInt(row.stock) : null;
 
       return {
         id: row.id,
@@ -278,10 +271,6 @@ const generarCodigoVenta = async (tiendaId) => {
 // ============================================
 // DESCONTAR STOCK DE MATERIALES
 // ============================================
-// Reglas:
-//   - Si NO existe registro en material_tienda → no controla stock → OK (return true)
-//   - Si existe registro y stock >= cantidad → descuenta
-//   - Si existe registro y stock < cantidad → ERROR (stock insuficiente)
 
 const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
   try {
@@ -300,16 +289,24 @@ const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
       return true;
     }
 
-    const currentStock = parseInt(stockResult.rows[0].stock) || 0;
+    const currentStock = stockResult.rows[0].stock;
+    
+    // Si el stock es null, significa que no se controla (aunque haya registro)
+    if (currentStock === null) {
+      console.log(`ℹ️ Material ${idMaterial} tiene stock NULL en tienda ${tiendaId}. No se controla stock.`);
+      return true;
+    }
+
+    const stockNum = parseInt(currentStock) || 0;
     const idMaterialTienda = stockResult.rows[0].id_material_tienda;
 
-    if (currentStock < cantidad) {
+    if (stockNum < cantidad) {
       throw new Error(
-        `Stock insuficiente para el material seleccionado (disponible: ${currentStock}, requerido: ${cantidad})`
+        `Stock insuficiente para el material seleccionado (disponible: ${stockNum}, requerido: ${cantidad})`
       );
     }
 
-    const newStock = currentStock - cantidad;
+    const newStock = stockNum - cantidad;
 
     await query(
       `
@@ -320,7 +317,7 @@ const descontarStockMaterial = async (idMaterial, tiendaId, cantidad) => {
       [newStock, idMaterialTienda]
     );
 
-    console.log(`✅ Stock descontado: Material ${idMaterial}, Tienda ${tiendaId}, ${cantidad} unidades (${currentStock} → ${newStock})`);
+    console.log(`✅ Stock descontado: Material ${idMaterial}, Tienda ${tiendaId}, ${cantidad} unidades (${stockNum} → ${newStock})`);
     return true;
   } catch (error) {
     console.error("Error descontando stock:", error);
@@ -407,11 +404,6 @@ const registrarMovimientoCaja = async (tiendaId, userId, montoEfectivo, idVenta)
 // GUARDAR MEDIDA DEL CLIENTE (HISTORIAL 1:N)
 // ============================================
 
-/**
- * Guarda la medida del cliente.
- * - Si `medidaId` viene: ACTUALIZA esa medida (fecha a hoy) y guarda la nota.
- * - Si no viene: CREA una nueva medida en el historial.
- */
 const guardarMedidaCliente = async (clientId, medidas) => {
   try {
     const clienteId = parseInt(clientId);
@@ -419,7 +411,6 @@ const guardarMedidaCliente = async (clientId, medidas) => {
       throw new Error("ID de cliente inválido");
     }
 
-    // Validar cliente existe
     const clienteResult = await query(
       `SELECT id_persona FROM persona WHERE id_persona = $1 AND estado = 'activo'`,
       [clienteId]
@@ -433,7 +424,6 @@ const guardarMedidaCliente = async (clientId, medidas) => {
     const nota = medidas?.nota || null;
 
     if (medidaId) {
-      // Verificar pertenencia
       const check = await query(
         `SELECT id_medida FROM medida WHERE id_medida = $1 AND id_persona = $2`,
         [medidaId, clienteId]
@@ -477,7 +467,6 @@ const guardarMedidaCliente = async (clientId, medidas) => {
       console.log(`📝 Medida ${medidaId} actualizada (fecha → hoy) para cliente ${clienteId}`);
       return medidaId;
     } else {
-      // Crear NUEVA medida en el historial
       const medidaResult = await query(
         `
         INSERT INTO medida (
