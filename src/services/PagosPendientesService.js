@@ -56,7 +56,8 @@ const mapEntregaToFrontend = (row, pagos = []) => {
     fechaVentaRaw: row.fecha_pedido || "",
     fechaEntregaEstimada: row.fecha_entrega_estimada || "",
     vendedor: row.vendedor || "",
-    registradoPor: row.registrado_por || "",
+    // ✅ CORREGIDO: usuario_registro viene del LEFT JOIN usuario
+    registradoPor: row.usuario_registro || row.registrado_por || "",
     pagos: pagos,
     tiendaId: row.id_tienda?.toString() || "",
     tiendaNombre: row.nombre_tienda || "",
@@ -297,7 +298,7 @@ const getEntregasConSaldo = async (userInfo, dateFilter = null) => {
       return { conSaldo: [], completos: [] };
     }
 
-    // ✅ CAMBIO: quitado per.id_medida
+    // ✅ CORREGIDO: LEFT JOIN usuario + usuario_registro
     let queryText = `
       SELECT 
         ep.id_entrega_pendiente,
@@ -317,11 +318,13 @@ const getEntregasConSaldo = async (userInfo, dateFilter = null) => {
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
           0
-        ) as monto_pagado
+        ) as monto_pagado,
+        u.usuario as usuario_registro
       FROM entrega_pendiente ep
       INNER JOIN pedido p ON ep.id_pedido = p.id_pedido
       INNER JOIN persona per ON p.id_cliente = per.id_persona
       INNER JOIN tienda t ON p.id_tienda = t.id_tienda
+      LEFT JOIN usuario u ON ep.id_usuario = u.id_usuario
       WHERE t.id_negocio = $1
     `;
 
@@ -344,7 +347,6 @@ const getEntregasConSaldo = async (userInfo, dateFilter = null) => {
       paramIndex++;
     }
 
-    // Aplicar filtros de fecha
     const dateFilterResult = applyDateFilters(queryText, params, dateFilter);
     queryText = dateFilterResult.queryText;
 
@@ -364,8 +366,6 @@ const getEntregasConSaldo = async (userInfo, dateFilter = null) => {
 
     for (const row of result.rows) {
       const pagos = await getPagosByEntregaId(row.id_pedido);
-
-      // ✅ CAMBIO: obtener medida más reciente del cliente
       const medidas = await getMedidaMasRecienteByClienteId(row.id_persona);
 
       const lenteResult = await query(
@@ -429,7 +429,7 @@ const getEntregas = async (userInfo, dateFilter = null) => {
       return { conSaldo: [], completos: [] };
     }
 
-    // ✅ CAMBIO: quitado per.id_medida
+    // ✅ CORREGIDO: LEFT JOIN usuario + usuario_registro
     let queryText = `
       SELECT 
         ep.id_entrega_pendiente,
@@ -449,11 +449,13 @@ const getEntregas = async (userInfo, dateFilter = null) => {
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
           0
-        ) as monto_pagado
+        ) as monto_pagado,
+        u.usuario as usuario_registro
       FROM entrega_pendiente ep
       INNER JOIN pedido p ON ep.id_pedido = p.id_pedido
       INNER JOIN persona per ON p.id_cliente = per.id_persona
       INNER JOIN tienda t ON p.id_tienda = t.id_tienda
+      LEFT JOIN usuario u ON ep.id_usuario = u.id_usuario
       WHERE t.id_negocio = $1
     `;
 
@@ -476,7 +478,6 @@ const getEntregas = async (userInfo, dateFilter = null) => {
       paramIndex++;
     }
 
-    // Aplicar filtros de fecha
     const dateFilterResult = applyDateFilters(queryText, params, dateFilter);
     queryText = dateFilterResult.queryText;
 
@@ -496,8 +497,6 @@ const getEntregas = async (userInfo, dateFilter = null) => {
 
     for (const row of result.rows) {
       const pagos = await getPagosByEntregaId(row.id_pedido);
-
-      // ✅ CAMBIO: obtener medida más reciente del cliente
       const medidas = await getMedidaMasRecienteByClienteId(row.id_persona);
 
       const lenteResult = await query(
@@ -567,7 +566,7 @@ const getEntregaById = async (id, userInfo) => {
       return null;
     }
 
-    // ✅ CAMBIO: quitado per.id_medida
+    // ✅ CORREGIDO: LEFT JOIN usuario + usuario_registro
     const result = await query(
       `
       SELECT 
@@ -588,11 +587,13 @@ const getEntregaById = async (id, userInfo) => {
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
           0
-        ) as monto_pagado
+        ) as monto_pagado,
+        u.usuario as usuario_registro
       FROM entrega_pendiente ep
       INNER JOIN pedido p ON ep.id_pedido = p.id_pedido
       INNER JOIN persona per ON p.id_cliente = per.id_persona
       INNER JOIN tienda t ON p.id_tienda = t.id_tienda
+      LEFT JOIN usuario u ON ep.id_usuario = u.id_usuario
       WHERE ep.id_entrega_pendiente = $1 AND t.id_negocio = $2
       `,
       [idNum, parseInt(negocioId)]
@@ -604,8 +605,6 @@ const getEntregaById = async (id, userInfo) => {
 
     const row = result.rows[0];
     const pagos = await getPagosByEntregaId(row.id_pedido);
-
-    // ✅ CAMBIO: obtener medida más reciente del cliente
     const medidas = await getMedidaMasRecienteByClienteId(row.id_persona);
 
     const lenteResult = await query(
@@ -924,7 +923,6 @@ const getEstadisticasPagos = async (userInfo) => {
       INNER JOIN tienda t ON p.id_tienda = t.id_tienda
       WHERE t.id_negocio = $1
         AND p.estado_pago != 'Completo'
-        AND p.estado_pago != 'Pendiente'
     `;
 
     const params = [parseInt(negocioId)];
