@@ -22,6 +22,15 @@ const hasLowStock = (stockPorTienda, stockMinimo) => {
   return false;
 };
 
+/**
+ * Determina si una tienda tiene control de stock.
+ * - Si el valor es null o undefined → NO controla stock (no debe existir registro en material_tienda)
+ * - Si el valor es un número (incluido 0) → SÍ controla stock
+ */
+const tieneControlStock = (valorStock) => {
+  return valorStock !== null && valorStock !== undefined;
+};
+
 // ============================================
 // MATERIALES
 // ============================================
@@ -214,9 +223,20 @@ const createMaterial = async (data, negocioId) => {
     // Asignar stock a las tiendas seleccionadas
     const tiendas = tiendasSeleccionadas || Object.keys(stockPorTienda || {});
     for (const tiendaId of tiendas) {
-      const stock = stockPorTienda?.[tiendaId] || 0;
-      const stockMinimo = stockMinimoPorTienda?.[tiendaId] || 0;
-      
+      const stockValue = stockPorTienda?.[tiendaId];
+
+      // ⚠️ CORRECCIÓN CLAVE: si el valor es null/undefined → "sin control" → NO crear registro
+      if (!tieneControlStock(stockValue)) {
+        console.log(`ℹ️ Tienda ${tiendaId} sin control de stock (no se crea registro en material_tienda)`);
+        continue;
+      }
+
+      const stock = Number(stockValue);
+      const stockMinimoValue = stockMinimoPorTienda?.[tiendaId];
+      const stockMinimo = (stockMinimoValue === null || stockMinimoValue === undefined)
+        ? 0
+        : Number(stockMinimoValue);
+
       await query(
         `
         INSERT INTO material_tienda (id_material, id_tienda, stock, stock_minimo)
@@ -311,15 +331,27 @@ const updateMaterial = async (id, data, negocioId) => {
     }
 
     if (tiendasSeleccionadas) {
+      // Eliminar todos los registros previos de material_tienda para este material
       await query(
         'DELETE FROM material_tienda WHERE id_material = $1',
         [materialId]
       );
 
       for (const tiendaId of tiendasSeleccionadas) {
-        const stock = stockPorTienda?.[tiendaId] || 0;
-        const stockMinimo = stockMinimoPorTienda?.[tiendaId] || 0;
-        
+        const stockValue = stockPorTienda?.[tiendaId];
+
+        // ⚠️ CORRECCIÓN CLAVE: si el valor es null/undefined → "sin control" → NO crear registro
+        if (!tieneControlStock(stockValue)) {
+          console.log(`ℹ️ Tienda ${tiendaId} sin control de stock (no se crea registro en material_tienda)`);
+          continue;
+        }
+
+        const stock = Number(stockValue);
+        const stockMinimoValue = stockMinimoPorTienda?.[tiendaId];
+        const stockMinimo = (stockMinimoValue === null || stockMinimoValue === undefined)
+          ? 0
+          : Number(stockMinimoValue);
+
         await query(
           `
           INSERT INTO material_tienda (id_material, id_tienda, stock, stock_minimo)
