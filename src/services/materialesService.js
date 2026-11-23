@@ -331,34 +331,119 @@ const updateMaterial = async (id, data, negocioId) => {
     }
 
     if (tiendasSeleccionadas) {
-      // Eliminar todos los registros previos de material_tienda para este material
-      await query(
-        'DELETE FROM material_tienda WHERE id_material = $1',
+      // Conservar los ID de material_tienda y todos sus movimientos históricos.
+      // NULL desactiva el control de stock, pero no elimina la asociación.
+      const tiendasSeleccionadasIds = tiendasSeleccionadas.map(String);
+      const tiendasExistentes = await query(
+        'SELECT id_material_tienda, id_tienda, stock FROM material_tienda WHERE id_material = $1',
         [materialId]
       );
+      const existentesPorTienda = new Map(
+        tiendasExistentes.rows.map(registro => [String(registro.id_tienda), registro])
+      );
 
-      for (const tiendaId of tiendasSeleccionadas) {
+      // Cuando se retira una tienda de la selección, se desactiva su control
+      // sin borrar la fila que utiliza movimientos_stock.
+      for (const registro of tiendasExistentes.rows) {
+        if (!tiendasSeleccionadasIds.includes(String(registro.id_tienda))) {
+          await query(
+            'UPDATE material_tienda SET stock = NULL, stock_minimo = 0 WHERE id_material_tienda = $1',
+            [registro.id_material_tienda]
+          );
+        }
+      }
+
+      const usuarioId = data.userId ? Number(data.userId) : null;
+
+      for (const tiendaId of tiendasSeleccionadasIds) {
         const stockValue = stockPorTienda?.[tiendaId];
+        const sinControl = stockValue === null || stockValue === undefined;
+        const stock = sinControl ? null : Number(stockValue);
+        const stockMinimoValue = stockMinimoPorTienda?.[tiendaId];
+        const stockMinimo = sinControl ? 0 : (
+          stockMinimoValue === null || stockMinimoValue === undefined
+            ? 0
+            : Number(stockMinimoValue)
+        );
 
-        // ⚠️ CORRECCIÓN CLAVE: si el valor es null/undefined → "sin control" → NO crear registro
-        if (!tieneControlStock(stockValue)) {
-          console.log(`ℹ️ Tienda ${tiendaId} sin control de stock (no se crea registro en material_tienda)`);
+        if (!sinControl && (!Number.isInteger(stock) || stock < 0)) {
+          throw new Error(`Stock inválido para la tienda ${tiendaId}`);
+        }
+        if (!Number.isInteger(stockMinimo) || stockMinimo < 0) {
+          throw new Error(`Stock mínimo inválido para la tienda ${tiendaId}`);
+        }
+
+        const anterior = existentesPorTienda.get(tiendaId);
+
+        if (sinControl) {
+          // Mantener la fila, incluido su ID histórico, y marcarla sin control.
+          await query(
+            `INSERT INTO material_tienda (id_material, id_tienda, stock, stock_minimo)
+             VALUES ($1, $2, NULL, 0)
+             ON CONFLICT (id_material, id_tienda)
+             DO UPDATE SET stock = NULL, stock_minimo = 0`,
+            [materialId, tiendaId]
+          );
           continue;
         }
 
-        const stock = Number(stockValue);
-        const stockMinimoValue = stockMinimoPorTienda?.[tiendaId];
-        const stockMinimo = (stockMinimoValue === null || stockMinimoValue === undefined)
-          ? 0
-          : Number(stockMinimoValue);
+        const stockAnterior = anterior && anterior.stock !== null
+          ? Number(anterior.stock)
+          : 0;
+        const cambiaCantidad = !anterior || anterior.stock === null || stockAnterior !== stock;
 
-        await query(
-          `
-          INSERT INTO material_tienda (id_material, id_tienda, stock, stock_minimo)
-          VALUES ($1, $2, $3, $4)
-          `,
-          [materialId, tiendaId, stock, stockMinimo]
-        );
+        if (cambiaCantidad && (!Number.isInteger(usuarioId) || usuarioId <= 0)) {
+          throw new Error('ID de usuario requerido para registrar el movimiento de stock');
+        }
+
+        if (!anterior) {
+          // Crear asociación y movimiento en una sola sentencia atómica.
+          await query(
+            `WITH nuevo AS (
+               INSERT INTO material_tienda (id_material, id_tienda, stock, stock_minimo)
+               VALUES ($1, $2, $3, $4)
+               RETURNING id_material_tienda
+             )
+             INSERT INTO movimientos_stock (
+               id_material_tienda, id_usuario, cantidad_anterior,
+               cantidad_nueva, cantidad_modificada
+             )
+             SELECT id_material_tienda, $5, 0, $3, $3
+             FROM nuevo WHERE $3 <> 0`,
+            [materialId, tiendaId, stock, stockMinimo, usuarioId]
+          );
+        } else if (cambiaCantidad) {
+          // La modificación y su registro quedan en la misma sentencia SQL.
+          await query(
+            `WITH anterior AS (
+               SELECT id_material_tienda, stock
+               FROM material_tienda
+               WHERE id_material = $1 AND id_tienda = $2
+               FOR UPDATE
+             ), actualizado AS (
+               UPDATE material_tienda mt
+               SET stock = $3, stock_minimo = $4
+               FROM anterior a
+               WHERE mt.id_material_tienda = a.id_material_tienda
+               RETURNING mt.id_material_tienda
+             )
+             INSERT INTO movimientos_stock (
+               id_material_tienda, id_usuario, cantidad_anterior,
+               cantidad_nueva, cantidad_modificada
+             )
+             SELECT a.id_material_tienda, $5, COALESCE(a.stock, 0),
+                    $3, $3 - COALESCE(a.stock, 0)
+             FROM anterior a
+             INNER JOIN actualizado u ON u.id_material_tienda = a.id_material_tienda`,
+            [materialId, tiendaId, stock, stockMinimo, usuarioId]
+          );
+        } else {
+          // Si solo cambia el mínimo, no generar un movimiento de cantidad.
+          await query(
+            'UPDATE material_tienda SET stock_minimo = $1 WHERE id_material_tienda = $2',
+            [stockMinimo, anterior.id_material_tienda]
+          );
+        }
       }
     }
 
