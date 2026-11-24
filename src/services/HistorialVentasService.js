@@ -6,8 +6,43 @@ const { pool } = require("../../db");
 // FUNCIONES DE UTILIDAD PARA FILTROS DE FECHA
 // ============================================
 
+// La columna venta.fecha_hora es TIMESTAMP SIN ZONA HORARIA y almacena hora de Bolivia.
+// Los límites de búsqueda deben ser fechas locales sin conversión a UTC.
+const getBoliviaToday = () => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const get = (type) => parts.find(part => part.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+};
+
+const parseCalendarDate = (value) => {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return date;
+};
+
+const formatCalendarDate = (date) => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addCalendarDays = (date, days) => {
+  const result = new Date(date.getTime());
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+};
+
 const buildDateFilter = (dateFilterType, specificDate, startDate, endDate, startParamIndex = 1) => {
-  let dateCondition = "";
+  let dateCondition = '';
   const params = [];
   let paramIndex = startParamIndex;
 
@@ -15,90 +50,54 @@ const buildDateFilter = (dateFilterType, specificDate, startDate, endDate, start
     return { dateCondition, params, paramIndex };
   }
 
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = parseCalendarDate(getBoliviaToday());
+  let start = null;
+  let end = null;
+  const weekDay = today.getUTCDay() || 7;
 
   switch (dateFilterType) {
-    case 'today': {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-      params.push(today.toISOString(), tomorrow.toISOString());
-      paramIndex += 2;
+    case 'today':
+      start = today;
+      end = addCalendarDays(today, 1);
       break;
-    }
-    case 'yesterday': {
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-      params.push(yesterday.toISOString(), today.toISOString());
-      paramIndex += 2;
+    case 'yesterday':
+      start = addCalendarDays(today, -1);
+      end = today;
       break;
-    }
-    case 'thisWeek': {
-      const startOfWeek = new Date(today);
-      const day = today.getDay() || 7;
-      startOfWeek.setDate(today.getDate() - day + 1);
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(endOfWeek.getDate() + 7);
-      dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-      params.push(startOfWeek.toISOString(), endOfWeek.toISOString());
-      paramIndex += 2;
+    case 'thisWeek':
+      start = addCalendarDays(today, 1 - weekDay);
+      end = addCalendarDays(start, 7);
       break;
-    }
-    case 'lastWeek': {
-      const startOfLastWeek = new Date(today);
-      const day = today.getDay() || 7;
-      startOfLastWeek.setDate(today.getDate() - day - 6);
-      const endOfLastWeek = new Date(startOfLastWeek);
-      endOfLastWeek.setDate(endOfLastWeek.getDate() + 7);
-      dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-      params.push(startOfLastWeek.toISOString(), endOfLastWeek.toISOString());
-      paramIndex += 2;
+    case 'lastWeek':
+      end = addCalendarDays(today, 1 - weekDay);
+      start = addCalendarDays(end, -7);
       break;
-    }
-    case 'thisMonth': {
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-      params.push(startOfMonth.toISOString(), endOfMonth.toISOString());
-      paramIndex += 2;
+    case 'thisMonth':
+      start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+      end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
       break;
-    }
-    case 'lastMonth': {
-      const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-      params.push(startOfLastMonth.toISOString(), endOfLastMonth.toISOString());
-      paramIndex += 2;
+    case 'lastMonth':
+      start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+      end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
       break;
-    }
-    case 'specific': {
-      if (specificDate) {
-        const date = new Date(specificDate);
-        const nextDay = new Date(date);
-        nextDay.setDate(nextDay.getDate() + 1);
-        dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-        params.push(date.toISOString(), nextDay.toISOString());
-        paramIndex += 2;
-      }
+    case 'specific':
+      start = parseCalendarDate(specificDate);
+      end = start ? addCalendarDays(start, 1) : null;
       break;
-    }
-    case 'range': {
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setDate(end.getDate() + 1);
-        dateCondition = ` AND v.fecha_hora >= $${paramIndex} AND v.fecha_hora < $${paramIndex + 1}`;
-        params.push(start.toISOString(), end.toISOString());
-        paramIndex += 2;
-      }
+    case 'range':
+      start = parseCalendarDate(startDate);
+      const lastDay = parseCalendarDate(endDate);
+      end = lastDay ? addCalendarDays(lastDay, 1) : null;
       break;
-    }
     default:
       break;
   }
 
+  if (start && end) {
+    dateCondition = ` AND v.fecha_hora >= $${paramIndex}::timestamp AND v.fecha_hora < $${paramIndex + 1}::timestamp`;
+    params.push(formatCalendarDate(start), formatCalendarDate(end));
+    paramIndex += 2;
+  }
   return { dateCondition, params, paramIndex };
 };
 
@@ -795,9 +794,8 @@ const getEstadisticasRapidas = async (tiendaIdFiltro, userInfo) => {
       };
     }
 
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const today = parseCalendarDate(getBoliviaToday());
+    const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
 
     let queryText = `
       SELECT 
@@ -809,7 +807,7 @@ const getEstadisticasRapidas = async (tiendaIdFiltro, userInfo) => {
       WHERE t.id_negocio = $1 AND v.fecha_hora >= $2
     `;
 
-    const params = [parseInt(negocioId), startOfMonth.toISOString()];
+    const params = [parseInt(negocioId), formatCalendarDate(startOfMonth)];
     let paramIndex = 3;
 
     const tiendaEfectiva = tiendaIdFiltro && tiendaIdFiltro !== 'todas' ? tiendaIdFiltro : tiendaId;
@@ -833,7 +831,7 @@ const getEstadisticasRapidas = async (tiendaIdFiltro, userInfo) => {
       WHERE t.id_negocio = $1 AND v.fecha_hora >= $2 AND v.fecha_hora < $3
     `;
 
-    const hoyParams = [parseInt(negocioId), today.toISOString(), new Date(today.getTime() + 86400000).toISOString()];
+    const hoyParams = [parseInt(negocioId), formatCalendarDate(today), formatCalendarDate(addCalendarDays(today, 1))];
     let hoyIndex = 4;
 
     if (tiendaEfectiva && tiendaEfectiva !== 'todas') {
