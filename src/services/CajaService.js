@@ -76,37 +76,34 @@ const getMovimientos = async (filtros) => {
 
     switch (filterType) {
       case 'today':
-        whereClauses.push(`DATE(tc.fecha) = CURRENT_DATE`);
+        whereClauses.push(`DATE(tc.fecha) = (NOW() AT TIME ZONE 'America/La_Paz')::date`);
         break;
       case 'yesterday':
-        whereClauses.push(`DATE(tc.fecha) = CURRENT_DATE - INTERVAL '1 day'`);
+        whereClauses.push(`DATE(tc.fecha) = (NOW() AT TIME ZONE 'America/La_Paz')::date - INTERVAL '1 day'`);
         break;
       case 'week':
-        whereClauses.push(`tc.fecha >= CURRENT_DATE - INTERVAL '7 days'`);
+        whereClauses.push(`tc.fecha >= (NOW() AT TIME ZONE 'America/La_Paz')::date - INTERVAL '7 days'`);
         break;
       case 'month':
-        whereClauses.push(`tc.fecha >= CURRENT_DATE - INTERVAL '30 days'`);
+        whereClauses.push(`tc.fecha >= (NOW() AT TIME ZONE 'America/La_Paz')::date - INTERVAL '30 days'`);
         break;
       case 'specific':
         if (specificDate) {
-          const date = new Date(specificDate);
           whereClauses.push(`DATE(tc.fecha) = $${paramCount}`);
-          params.push(date.toISOString().split('T')[0]);
+          params.push(specificDate.slice(0, 10));
           paramCount++;
         }
         break;
       case 'range':
         if (startDate && endDate) {
           whereClauses.push(`DATE(tc.fecha) BETWEEN $${paramCount} AND $${paramCount + 1}`);
-          const start = new Date(startDate);
-          const end = new Date(endDate);
-          params.push(start.toISOString().split('T')[0]);
-          params.push(end.toISOString().split('T')[0]);
+          params.push(startDate.slice(0, 10));
+          params.push(endDate.slice(0, 10));
           paramCount += 2;
         }
         break;
       default:
-        whereClauses.push(`DATE(tc.fecha) = CURRENT_DATE`);
+        whereClauses.push(`DATE(tc.fecha) = (NOW() AT TIME ZONE 'America/La_Paz')::date`);
     }
 
     const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
@@ -185,7 +182,7 @@ const getTotalesHoy = async (tiendaId, userId) => {
         COALESCE(SUM(CASE WHEN tipo_movimiento = 'egreso' THEN monto ELSE 0 END), 0) as egresos,
         COUNT(*) as total_movimientos
        FROM transaccion_caja 
-       WHERE id_caja = $1 AND DATE(fecha) = CURRENT_DATE`,
+       WHERE id_caja = $1 AND DATE(fecha) = (NOW() AT TIME ZONE 'America/La_Paz')::date`,
       [caja.id_caja]
     );
 
@@ -211,9 +208,9 @@ const getStats = async (tiendaId, userId) => {
 
     const result = await query(
       `SELECT 
-        COALESCE(SUM(CASE WHEN tipo_movimiento = 'ingreso' AND DATE(fecha) = CURRENT_DATE THEN monto ELSE 0 END), 0) as ingresos_hoy,
-        COALESCE(SUM(CASE WHEN tipo_movimiento = 'egreso' AND DATE(fecha) = CURRENT_DATE THEN monto ELSE 0 END), 0) as egresos_hoy,
-        COUNT(CASE WHEN DATE(fecha) = CURRENT_DATE THEN 1 END) as movimientos_hoy
+        COALESCE(SUM(CASE WHEN tipo_movimiento = 'ingreso' AND DATE(fecha) = (NOW() AT TIME ZONE 'America/La_Paz')::date THEN monto ELSE 0 END), 0) as ingresos_hoy,
+        COALESCE(SUM(CASE WHEN tipo_movimiento = 'egreso' AND DATE(fecha) = (NOW() AT TIME ZONE 'America/La_Paz')::date THEN monto ELSE 0 END), 0) as egresos_hoy,
+        COUNT(CASE WHEN DATE(fecha) = (NOW() AT TIME ZONE 'America/La_Paz')::date THEN 1 END) as movimientos_hoy
        FROM transaccion_caja 
        WHERE id_caja = $1`,
       [caja.id_caja]

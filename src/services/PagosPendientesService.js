@@ -147,6 +147,33 @@ const getMedidaMasRecienteByClienteId = async (clientId) => {
 // FUNCIÓN PARA APLICAR FILTROS DE FECHA
 // ============================================
 
+const getFechaBolivia = (valor) => {
+  if (!valor) return null;
+
+  // Una fecha de calendario no debe convertirse a UTC.
+  if (typeof valor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+    return valor;
+  }
+
+  // Fecha/hora sin zona: conservar el día indicado por el calendario.
+  if (typeof valor === "string" && /^\d{4}-\d{2}-\d{2}T/.test(valor) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(valor)) {
+    return valor.slice(0, 10);
+  }
+
+  const fecha = new Date(valor);
+  if (Number.isNaN(fecha.getTime())) return null;
+
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/La_Paz",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(fecha);
+
+  const obtener = (tipo) => partes.find(parte => parte.type === tipo)?.value;
+  return `${obtener("year")}-${obtener("month")}-${obtener("day")}`;
+};
+
 const applyDateFilters = (queryText, params, dateFilter) => {
   if (!dateFilter || dateFilter.type === "all") {
     return { queryText, params };
@@ -154,52 +181,54 @@ const applyDateFilters = (queryText, params, dateFilter) => {
 
   let filterQuery = "";
   const { type, specificDate, startDate, endDate } = dateFilter;
+  const hoyBolivia = "(NOW() AT TIME ZONE 'America/La_Paz')::date";
 
   switch (type) {
     case "today": {
-      filterQuery = ` AND DATE(p.fecha_pedido) = CURRENT_DATE`;
+      filterQuery = ` AND DATE(p.fecha_pedido) = ${hoyBolivia}`;
       break;
     }
     case "yesterday": {
-      filterQuery = ` AND DATE(p.fecha_pedido) = CURRENT_DATE - INTERVAL '1 day'`;
+      filterQuery = ` AND DATE(p.fecha_pedido) = ${hoyBolivia} - 1`;
       break;
     }
     case "thisWeek": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('week', CURRENT_DATE) 
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '6 days'`;
+      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('week', ${hoyBolivia})::date
+                      AND DATE(p.fecha_pedido) < (DATE_TRUNC('week', ${hoyBolivia}) + INTERVAL '7 days')::date`;
       break;
     }
     case "lastWeek": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '7 days')
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '7 days') + INTERVAL '6 days'`;
+      filterQuery = ` AND DATE(p.fecha_pedido) >= (DATE_TRUNC('week', ${hoyBolivia}) - INTERVAL '7 days')::date
+                      AND DATE(p.fecha_pedido) < DATE_TRUNC('week', ${hoyBolivia})::date`;
       break;
     }
     case "thisMonth": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('month', CURRENT_DATE)
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'`;
+      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('month', ${hoyBolivia})::date
+                      AND DATE(p.fecha_pedido) < (DATE_TRUNC('month', ${hoyBolivia}) + INTERVAL '1 month')::date`;
       break;
     }
     case "lastMonth": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') + INTERVAL '1 month' - INTERVAL '1 day'`;
+      filterQuery = ` AND DATE(p.fecha_pedido) >= (DATE_TRUNC('month', ${hoyBolivia}) - INTERVAL '1 month')::date
+                      AND DATE(p.fecha_pedido) < DATE_TRUNC('month', ${hoyBolivia})::date`;
       break;
     }
     case "specific": {
-      if (specificDate) {
-        const date = new Date(specificDate);
-        const formattedDate = date.toISOString().split('T')[0];
-        filterQuery = ` AND DATE(p.fecha_pedido) = '${formattedDate}'::date`;
+      const fecha = getFechaBolivia(specificDate);
+      if (fecha) {
+        params.push(fecha);
+        filterQuery = ` AND DATE(p.fecha_pedido) = $${params.length}::date`;
       }
       break;
     }
     case "range": {
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const formattedStart = start.toISOString().split('T')[0];
-        const formattedEnd = end.toISOString().split('T')[0];
-        filterQuery = ` AND DATE(p.fecha_pedido) >= '${formattedStart}'::date 
-                        AND DATE(p.fecha_pedido) <= '${formattedEnd}'::date`;
+      const inicio = getFechaBolivia(startDate);
+      const fin = getFechaBolivia(endDate);
+      if (inicio && fin) {
+        params.push(inicio);
+        const inicioIndex = params.length;
+        params.push(fin);
+        const finIndex = params.length;
+        filterQuery = ` AND DATE(p.fecha_pedido) BETWEEN $${inicioIndex}::date AND $${finIndex}::date`;
       }
       break;
     }
@@ -982,5 +1011,5 @@ module.exports = {
   getEntregaByVentaId,
   getHistorialPagos,
   registrarPago,
-  getEstadisticasPagos
+  getEstadisticasPagos 
 };

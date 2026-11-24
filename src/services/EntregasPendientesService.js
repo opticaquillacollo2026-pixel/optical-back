@@ -151,54 +151,65 @@ const applyDateFilters = (queryText, params, dateFilter) => {
     return { queryText, params };
   }
 
-  let filterQuery = "";
   const { type, specificDate, startDate, endDate } = dateFilter;
+  const fechaBolivia = `(CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz')::date`;
+
+  // La fecha de los pedidos se almacena en hora local de Bolivia.
+  // Los parámetros del calendario se interpretan como días, no como horas UTC.
+  const fechaCalendario = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/La_Paz',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  };
+
+  let filterQuery = "";
 
   switch (type) {
-    case "today": {
-      filterQuery = ` AND DATE(p.fecha_pedido) = CURRENT_DATE`;
+    case "today":
+      filterQuery = ` AND DATE(p.fecha_pedido) = ${fechaBolivia}`;
       break;
-    }
-    case "yesterday": {
-      filterQuery = ` AND DATE(p.fecha_pedido) = CURRENT_DATE - INTERVAL '1 day'`;
+    case "yesterday":
+      filterQuery = ` AND DATE(p.fecha_pedido) = ${fechaBolivia} - 1`;
       break;
-    }
-    case "thisWeek": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('week', CURRENT_DATE) 
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '6 days'`;
+    case "thisWeek":
+      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('week', ${fechaBolivia})::date
+                      AND DATE(p.fecha_pedido) < (DATE_TRUNC('week', ${fechaBolivia}) + INTERVAL '1 week')::date`;
       break;
-    }
-    case "lastWeek": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '7 days')
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '7 days') + INTERVAL '6 days'`;
+    case "lastWeek":
+      filterQuery = ` AND DATE(p.fecha_pedido) >= (DATE_TRUNC('week', ${fechaBolivia}) - INTERVAL '1 week')::date
+                      AND DATE(p.fecha_pedido) < DATE_TRUNC('week', ${fechaBolivia})::date`;
       break;
-    }
-    case "thisMonth": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('month', CURRENT_DATE)
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'`;
+    case "thisMonth":
+      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('month', ${fechaBolivia})::date
+                      AND DATE(p.fecha_pedido) < (DATE_TRUNC('month', ${fechaBolivia}) + INTERVAL '1 month')::date`;
       break;
-    }
-    case "lastMonth": {
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
-                      AND DATE(p.fecha_pedido) <= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') + INTERVAL '1 month' - INTERVAL '1 day'`;
+    case "lastMonth":
+      filterQuery = ` AND DATE(p.fecha_pedido) >= (DATE_TRUNC('month', ${fechaBolivia}) - INTERVAL '1 month')::date
+                      AND DATE(p.fecha_pedido) < DATE_TRUNC('month', ${fechaBolivia})::date`;
       break;
-    }
     case "specific": {
-      if (specificDate) {
-        const date = new Date(specificDate);
-        const formattedDate = date.toISOString().split('T')[0];
-        filterQuery = ` AND DATE(p.fecha_pedido) = '${formattedDate}'::date`;
+      const date = fechaCalendario(specificDate);
+      if (date) {
+        params.push(date);
+        filterQuery = ` AND DATE(p.fecha_pedido) = $${params.length}::date`;
       }
       break;
     }
     case "range": {
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const formattedStart = start.toISOString().split('T')[0];
-        const formattedEnd = end.toISOString().split('T')[0];
-        filterQuery = ` AND DATE(p.fecha_pedido) >= '${formattedStart}'::date 
-                        AND DATE(p.fecha_pedido) <= '${formattedEnd}'::date`;
+      const start = fechaCalendario(startDate);
+      const end = fechaCalendario(endDate);
+      if (start && end) {
+        params.push(start, end);
+        filterQuery = ` AND DATE(p.fecha_pedido) BETWEEN $${params.length - 1}::date AND $${params.length}::date`;
       }
       break;
     }
