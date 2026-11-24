@@ -356,7 +356,8 @@ const registrarVenta = async (req, res) => {
         idPedido: result.idPedido,
         codigoVenta: result.codigoVenta,
         estadoPago: result.estadoPago,
-        total: result.total
+        total: result.total,
+        tiendaCelular: result.tiendaCelular
       }
     });
   } catch (error) {

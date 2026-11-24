@@ -61,6 +61,7 @@ const mapEntregaToFrontend = (row, pagos = []) => {
     pagos: pagos,
     tiendaId: row.id_tienda?.toString() || "",
     tiendaNombre: row.nombre_tienda || "",
+    tiendaCelular: row.tienda_celular || "",
     medidas: medidas,
     accesorios: accesorios
   };
@@ -344,6 +345,7 @@ const getEntregasConSaldo = async (userInfo, dateFilter = null) => {
         per.apellido,
         per.celular,
         t.nombre_tienda,
+        t.celular AS tienda_celular,
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
           0
@@ -475,6 +477,7 @@ const getEntregas = async (userInfo, dateFilter = null) => {
         per.apellido,
         per.celular,
         t.nombre_tienda,
+        t.celular AS tienda_celular,
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
           0
@@ -613,6 +616,7 @@ const getEntregaById = async (id, userInfo) => {
         per.apellido,
         per.celular,
         t.nombre_tienda,
+        t.celular AS tienda_celular,
         COALESCE(
           (SELECT SUM(v2.monto_pagado) FROM venta v2 WHERE v2.id_pedido = p.id_pedido),
           0

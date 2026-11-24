@@ -544,6 +544,14 @@ const registrarVenta = async (ventaData, userInfo) => {
   console.log("📝 Cantidad de productos:", productos?.length || 0);
 
   try {
+    // Consultar el celular oficial de la tienda antes de registrar la venta.
+    // Datos oficiales de la tienda para el ticket (no dependen del navegador).
+    const tiendaContactoResult = await query(
+      `SELECT celular FROM tienda WHERE id_tienda = $1 AND id_negocio = $2`,
+      [parseInt(tiendaId), parseInt(negocioId)]
+    );
+    const tiendaCelular = tiendaContactoResult.rows[0]?.celular || "";
+
     // 1. Generar código de venta
     const codigoVenta = await generarCodigoVenta(tiendaId);
     console.log("📝 Código de venta generado:", codigoVenta);
@@ -877,6 +885,7 @@ const registrarVenta = async (ventaData, userInfo) => {
       codigoVenta: codigoVentaFinal,
       estadoPago,
       total,
+      tiendaCelular,
     };
   } catch (error) {
     console.error("Error en registrarVenta service:", error);

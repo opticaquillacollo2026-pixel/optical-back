@@ -117,6 +117,8 @@ const mapVentaToFrontend = (row) => {
     motivoDescuento: row.motivo_descripcion || '',
     total: parseFloat(row.total || 0),
     clientName: row.cliente_nombre || 'Cliente',
+    clienteCelular: row.cliente_celular || '',
+    tiendaCelular: row.tienda_celular || '',
     tiendaId: row.id_tienda?.toString(),
     pagoEfectivo: parseFloat(row.monto_efectivo || 0),
     pagoQR: parseFloat(row.monto_qr || 0),
@@ -166,6 +168,8 @@ const getVentas = async (filtros, userInfo) => {
         p.id_tienda,
         p.fecha_pedido,
         per.nombre || ' ' || per.apellido as cliente_nombre,
+        per.celular as cliente_celular,
+        t.celular as tienda_celular,
         u.usuario
       FROM venta v
       INNER JOIN pedido p ON v.id_pedido = p.id_pedido
@@ -339,6 +343,8 @@ const getVentaById = async (id, userInfo) => {
         p.total,
         p.id_tienda,
         per.nombre || ' ' || per.apellido as cliente_nombre,
+        per.celular as cliente_celular,
+        t.celular as tienda_celular,
         u.usuario
       FROM venta v
       INNER JOIN pedido p ON v.id_pedido = p.id_pedido
@@ -367,6 +373,8 @@ const getVentaById = async (id, userInfo) => {
       total: parseFloat(row.total || 0),
       metodoPago: row.metodo_pago || 'efectivo',
       clientName: row.cliente_nombre || 'Cliente',
+      clienteCelular: row.cliente_celular || '',
+      tiendaCelular: row.tienda_celular || '',
       tiendaId: row.id_tienda?.toString(),
       pagoEfectivo: parseFloat(row.monto_efectivo || 0),
       pagoQR: parseFloat(row.monto_qr || 0),
@@ -571,6 +579,8 @@ const getVentasByCodigo = async (codigoVenta, userInfo) => {
         p.total,
         p.id_tienda,
         per.nombre || ' ' || per.apellido as cliente_nombre,
+        per.celular as cliente_celular,
+        t.celular as tienda_celular,
         u.usuario
       FROM venta v
       INNER JOIN pedido p ON v.id_pedido = p.id_pedido
@@ -628,6 +638,8 @@ const getVentasByCliente = async (clientName, userInfo) => {
         p.total,
         p.id_tienda,
         per.nombre || ' ' || per.apellido as cliente_nombre,
+        per.celular as cliente_celular,
+        t.celular as tienda_celular,
         u.usuario
       FROM venta v
       INNER JOIN pedido p ON v.id_pedido = p.id_pedido
@@ -876,7 +888,8 @@ const getTiendas = async (negocioId) => {
       `
       SELECT 
         id_tienda as id,
-        nombre_tienda as nombre
+        nombre_tienda as nombre,
+        celular as celular
       FROM tienda
       WHERE id_negocio = $1 AND estado = 'activo'
       ORDER BY nombre_tienda
@@ -886,7 +899,8 @@ const getTiendas = async (negocioId) => {
 
     return result.rows.map(row => ({
       id: row.id.toString(),
-      nombre: row.nombre
+      nombre: row.nombre,
+      celular: row.celular || ''
     }));
   } catch (error) {
     console.error("Error en getTiendas service:", error);
