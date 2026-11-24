@@ -1,6 +1,9 @@
 // src/services/DashboardService.js
 const { query } = require("../../db");
 
+// Fecha de negocio: inicio del día actual en Bolivia (TIMESTAMP local).
+const INICIO_HOY_BOLIVIA = "(CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz')::date";
+
 // Obtener tiendas disponibles para el usuario
 const getUserTiendas = async (userId, userRole) => {
   try {
@@ -64,7 +67,8 @@ const getDashboardStats = async (userId, userRole) => {
       SELECT COALESCE(SUM(p.total), 0) as total
       FROM pedido p
       WHERE p.id_tienda = ANY($1::int[])
-        AND DATE(p.fecha_pedido) = CURRENT_DATE
+        AND p.fecha_pedido >= ${INICIO_HOY_BOLIVIA}
+        AND p.fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day')
         AND p.estado_pago != 'Pendiente'
     `;
     const ventasHoyResult = await query(ventasHoyQuery, [tiendasIds]);
@@ -75,7 +79,8 @@ const getDashboardStats = async (userId, userRole) => {
       SELECT COALESCE(SUM(p.total), 0) as total
       FROM pedido p
       WHERE p.id_tienda = ANY($1::int[])
-        AND DATE(p.fecha_pedido) = CURRENT_DATE - INTERVAL '1 day'
+        AND p.fecha_pedido >= (${INICIO_HOY_BOLIVIA} - INTERVAL '1 day')
+        AND p.fecha_pedido < ${INICIO_HOY_BOLIVIA}
         AND p.estado_pago != 'Pendiente'
     `;
     const ventasAyerResult = await query(ventasAyerQuery, [tiendasIds]);
@@ -108,9 +113,9 @@ const getDashboardStats = async (userId, userRole) => {
     const ultimaVentaQuery = `
       SELECT 
         CASE 
-          WHEN EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido)) < 60 THEN 'Hace ' || EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido))::INT || ' segundos'
-          WHEN EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido)) < 3600 THEN 'Hace ' || EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido))::INT / 60 || ' minutos'
-          WHEN EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido)) < 86400 THEN 'Hace ' || EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido))::INT / 3600 || ' horas'
+          WHEN EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido)) < 60 THEN 'Hace ' || EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido))::INT || ' segundos'
+          WHEN EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido)) < 3600 THEN 'Hace ' || EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido))::INT / 60 || ' minutos'
+          WHEN EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido)) < 86400 THEN 'Hace ' || EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido))::INT / 3600 || ' horas'
           ELSE 'Hace más de 1 día'
         END as ultima_venta
       FROM pedido p
@@ -147,12 +152,13 @@ const getSalesVariation = async (userId, userRole) => {
 
     const queryStr = `
       SELECT 
-        COALESCE(SUM(CASE WHEN DATE(fecha_pedido) = CURRENT_DATE THEN total ELSE 0 END), 0) as hoy,
-        COALESCE(SUM(CASE WHEN DATE(fecha_pedido) = CURRENT_DATE - INTERVAL '1 day' THEN total ELSE 0 END), 0) as ayer
+        COALESCE(SUM(CASE WHEN fecha_pedido >= ${INICIO_HOY_BOLIVIA} AND fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day') THEN total ELSE 0 END), 0) as hoy,
+        COALESCE(SUM(CASE WHEN fecha_pedido >= (${INICIO_HOY_BOLIVIA} - INTERVAL '1 day') AND fecha_pedido < ${INICIO_HOY_BOLIVIA} THEN total ELSE 0 END), 0) as ayer
       FROM pedido
       WHERE id_tienda = ANY($1::int[])
         AND estado_pago != 'Pendiente'
-        AND DATE(fecha_pedido) >= CURRENT_DATE - INTERVAL '1 day'
+        AND fecha_pedido >= (${INICIO_HOY_BOLIVIA} - INTERVAL '1 day')
+        AND fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day')
     `;
 
     const result = await query(queryStr, [tiendasIds]);
@@ -200,7 +206,8 @@ const getDailyGoalProgress = async (userId, userRole) => {
       INNER JOIN entrega_pendiente ep ON ep.id_pedido = p.id_pedido
       INNER JOIN entrega_detalle_lente edl ON edl.id_entrega_pendiente = ep.id_entrega_pendiente
       WHERE p.id_tienda = ANY($1::int[])
-        AND DATE(p.fecha_pedido) = CURRENT_DATE
+        AND p.fecha_pedido >= ${INICIO_HOY_BOLIVIA}
+        AND p.fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day')
         AND p.estado_pago != 'Pendiente'
     `;
 
@@ -248,7 +255,8 @@ const getDashboardStatsByStore = async (userId, userRole) => {
       FROM pedido p
       INNER JOIN tienda t ON t.id_tienda = p.id_tienda
       WHERE p.id_tienda = ANY($1::int[])
-        AND DATE(p.fecha_pedido) = CURRENT_DATE
+        AND p.fecha_pedido >= ${INICIO_HOY_BOLIVIA}
+        AND p.fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day')
         AND p.estado_pago != 'Pendiente'
       GROUP BY p.id_tienda, t.nombre_tienda
     `;
@@ -261,7 +269,8 @@ const getDashboardStatsByStore = async (userId, userRole) => {
         COALESCE(SUM(p.total), 0) as ventas_ayer
       FROM pedido p
       WHERE p.id_tienda = ANY($1::int[])
-        AND DATE(p.fecha_pedido) = CURRENT_DATE - INTERVAL '1 day'
+        AND p.fecha_pedido >= (${INICIO_HOY_BOLIVIA} - INTERVAL '1 day')
+        AND p.fecha_pedido < ${INICIO_HOY_BOLIVIA}
         AND p.estado_pago != 'Pendiente'
       GROUP BY p.id_tienda
     `;
@@ -295,9 +304,9 @@ const getDashboardStatsByStore = async (userId, userRole) => {
       SELECT DISTINCT ON (p.id_tienda)
         p.id_tienda,
         CASE 
-          WHEN EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido)) < 60 THEN 'Hace ' || EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido))::INT || ' segundos'
-          WHEN EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido)) < 3600 THEN 'Hace ' || EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido))::INT / 60 || ' minutos'
-          WHEN EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido)) < 86400 THEN 'Hace ' || EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido))::INT / 3600 || ' horas'
+          WHEN EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido)) < 60 THEN 'Hace ' || EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido))::INT || ' segundos'
+          WHEN EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido)) < 3600 THEN 'Hace ' || EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido))::INT / 60 || ' minutos'
+          WHEN EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido)) < 86400 THEN 'Hace ' || EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz') - p.fecha_pedido))::INT / 3600 || ' horas'
           ELSE 'Hace más de 1 día'
         END as ultima_venta
       FROM pedido p
@@ -372,13 +381,14 @@ const getSalesVariationByStore = async (userId, userRole) => {
       SELECT 
         p.id_tienda,
         t.nombre_tienda,
-        COALESCE(SUM(CASE WHEN DATE(fecha_pedido) = CURRENT_DATE THEN total ELSE 0 END), 0) as hoy,
-        COALESCE(SUM(CASE WHEN DATE(fecha_pedido) = CURRENT_DATE - INTERVAL '1 day' THEN total ELSE 0 END), 0) as ayer
+        COALESCE(SUM(CASE WHEN fecha_pedido >= ${INICIO_HOY_BOLIVIA} AND fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day') THEN total ELSE 0 END), 0) as hoy,
+        COALESCE(SUM(CASE WHEN fecha_pedido >= (${INICIO_HOY_BOLIVIA} - INTERVAL '1 day') AND fecha_pedido < ${INICIO_HOY_BOLIVIA} THEN total ELSE 0 END), 0) as ayer
       FROM pedido p
       INNER JOIN tienda t ON t.id_tienda = p.id_tienda
       WHERE p.id_tienda = ANY($1::int[])
         AND p.estado_pago != 'Pendiente'
-        AND DATE(p.fecha_pedido) >= CURRENT_DATE - INTERVAL '1 day'
+        AND p.fecha_pedido >= (${INICIO_HOY_BOLIVIA} - INTERVAL '1 day')
+        AND p.fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day')
       GROUP BY p.id_tienda, t.nombre_tienda
     `;
 
@@ -448,7 +458,8 @@ const getDailyGoalProgressByStore = async (userId, userRole) => {
       INNER JOIN entrega_pendiente ep ON ep.id_pedido = p.id_pedido
       INNER JOIN entrega_detalle_lente edl ON edl.id_entrega_pendiente = ep.id_entrega_pendiente
       WHERE p.id_tienda = ANY($1::int[])
-        AND DATE(p.fecha_pedido) = CURRENT_DATE
+        AND p.fecha_pedido >= ${INICIO_HOY_BOLIVIA}
+        AND p.fecha_pedido < (${INICIO_HOY_BOLIVIA} + INTERVAL '1 day')
         AND p.estado_pago != 'Pendiente'
       GROUP BY p.id_tienda, t.nombre_tienda
     `;
