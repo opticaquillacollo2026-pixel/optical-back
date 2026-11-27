@@ -1,3 +1,22 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // src/controllers/EntregasPendientesController.js
 const entregasPendientesService = require("../services/EntregasPendientesService");
 
@@ -20,6 +39,7 @@ const getEntregas = async (req, res) => {
     // Obtener filtros de fecha desde query params
     const dateFilter = {
       type: req.query.dateFilterType || "all",
+      includeHistoricalPending: req.query.includeHistoricalPending === "true",
       specificDate: req.query.specificDate || null,
       startDate: req.query.startDate || null,
       endDate: req.query.endDate || null

@@ -20,6 +20,7 @@ const getEntregasConSaldo = async (req, res) => {
     // Obtener filtros de fecha desde query params
     const dateFilter = {
       type: req.query.dateFilterType || "today",
+      includeHistoricalPending: req.query.includeHistoricalPending === "true" || !req.query.dateFilterType,
       specificDate: req.query.specificDate || null,
       startDate: req.query.startDate || null,
       endDate: req.query.endDate || null
@@ -76,6 +77,7 @@ const getEntregas = async (req, res) => {
     // Obtener filtros de fecha desde query params
     const dateFilter = {
       type: req.query.dateFilterType || "today",
+      includeHistoricalPending: req.query.includeHistoricalPending === "true" || !req.query.dateFilterType,
       specificDate: req.query.specificDate || null,
       startDate: req.query.startDate || null,
       endDate: req.query.endDate || null

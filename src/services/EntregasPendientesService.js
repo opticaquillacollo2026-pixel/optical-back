@@ -147,75 +147,97 @@ const getMedidaMasRecienteByClienteId = async (clientId) => {
 // FUNCIÓN PARA APLICAR FILTROS DE FECHA
 // ============================================
 
+const getFechaBolivia = (valor) => {
+  if (!valor) return null;
+
+  // Una fecha de calendario no debe convertirse a UTC.
+  if (typeof valor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+    return valor;
+  }
+
+  // Fecha/hora sin zona: conservar el día indicado por el calendario.
+  if (typeof valor === "string" && /^\d{4}-\d{2}-\d{2}T/.test(valor) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(valor)) {
+    return valor.slice(0, 10);
+  }
+
+  const fecha = new Date(valor);
+  if (Number.isNaN(fecha.getTime())) return null;
+
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/La_Paz",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(fecha);
+
+  const obtener = (tipo) => partes.find(parte => parte.type === tipo)?.value;
+  return `${obtener("year")}-${obtener("month")}-${obtener("day")}`;
+};
+
 const applyDateFilters = (queryText, params, dateFilter) => {
   if (!dateFilter || dateFilter.type === "all") {
     return { queryText, params };
   }
 
-  const { type, specificDate, startDate, endDate } = dateFilter;
-  const fechaBolivia = `(CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz')::date`;
-
-  // La fecha de los pedidos se almacena en hora local de Bolivia.
-  // Los parámetros del calendario se interpretan como días, no como horas UTC.
-  const fechaCalendario = (value) => {
-    if (!value) return null;
-    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return value;
-    }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/La_Paz',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(date);
-  };
-
   let filterQuery = "";
+  const { type, specificDate, startDate, endDate } = dateFilter;
+  const hoyBolivia = "(NOW() AT TIME ZONE 'America/La_Paz')::date";
 
   switch (type) {
-    case "today":
-      filterQuery = ` AND DATE(p.fecha_pedido) = ${fechaBolivia}`;
+    case "today": {
+      filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) = ${hoyBolivia}`;
       break;
-    case "yesterday":
-      filterQuery = ` AND DATE(p.fecha_pedido) = ${fechaBolivia} - 1`;
+    }
+    case "yesterday": {
+      filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) = ${hoyBolivia} - 1`;
       break;
-    case "thisWeek":
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('week', ${fechaBolivia})::date
-                      AND DATE(p.fecha_pedido) < (DATE_TRUNC('week', ${fechaBolivia}) + INTERVAL '1 week')::date`;
+    }
+    case "thisWeek": {
+      filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) >= DATE_TRUNC('week', ${hoyBolivia})::date
+                      AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) < (DATE_TRUNC('week', ${hoyBolivia}) + INTERVAL '7 days')::date`;
       break;
-    case "lastWeek":
-      filterQuery = ` AND DATE(p.fecha_pedido) >= (DATE_TRUNC('week', ${fechaBolivia}) - INTERVAL '1 week')::date
-                      AND DATE(p.fecha_pedido) < DATE_TRUNC('week', ${fechaBolivia})::date`;
+    }
+    case "lastWeek": {
+      filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) >= (DATE_TRUNC('week', ${hoyBolivia}) - INTERVAL '7 days')::date
+                      AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) < DATE_TRUNC('week', ${hoyBolivia})::date`;
       break;
-    case "thisMonth":
-      filterQuery = ` AND DATE(p.fecha_pedido) >= DATE_TRUNC('month', ${fechaBolivia})::date
-                      AND DATE(p.fecha_pedido) < (DATE_TRUNC('month', ${fechaBolivia}) + INTERVAL '1 month')::date`;
+    }
+    case "thisMonth": {
+      filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) >= DATE_TRUNC('month', ${hoyBolivia})::date
+                      AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) < (DATE_TRUNC('month', ${hoyBolivia}) + INTERVAL '1 month')::date`;
       break;
-    case "lastMonth":
-      filterQuery = ` AND DATE(p.fecha_pedido) >= (DATE_TRUNC('month', ${fechaBolivia}) - INTERVAL '1 month')::date
-                      AND DATE(p.fecha_pedido) < DATE_TRUNC('month', ${fechaBolivia})::date`;
+    }
+    case "lastMonth": {
+      filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) >= (DATE_TRUNC('month', ${hoyBolivia}) - INTERVAL '1 month')::date
+                      AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) < DATE_TRUNC('month', ${hoyBolivia})::date`;
       break;
+    }
     case "specific": {
-      const date = fechaCalendario(specificDate);
-      if (date) {
-        params.push(date);
-        filterQuery = ` AND DATE(p.fecha_pedido) = $${params.length}::date`;
+      const fecha = getFechaBolivia(specificDate);
+      if (fecha) {
+        params.push(fecha);
+        filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) = $${params.length}::date`;
       }
       break;
     }
     case "range": {
-      const start = fechaCalendario(startDate);
-      const end = fechaCalendario(endDate);
-      if (start && end) {
-        params.push(start, end);
-        filterQuery = ` AND DATE(p.fecha_pedido) BETWEEN $${params.length - 1}::date AND $${params.length}::date`;
+      const inicio = getFechaBolivia(startDate);
+      const fin = getFechaBolivia(endDate);
+      if (inicio && fin) {
+        params.push(inicio);
+        const inicioIndex = params.length;
+        params.push(fin);
+        const finIndex = params.length;
+        filterQuery = ` AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) >= $${inicioIndex}::date AND (CASE WHEN pg_typeof(p.fecha_pedido) = 'timestamp with time zone'::regtype THEN (p.fecha_pedido::timestamptz AT TIME ZONE 'America/La_Paz')::date ELSE p.fecha_pedido::date END) < ($${finIndex}::date + 1)`;
       }
       break;
     }
   }
 
+  if (filterQuery && dateFilter.includeHistoricalPending && type === "today") {
+    // Mantener el ámbito de negocio y tienda: la excepción solo afecta la fecha.
+    filterQuery = ` AND (ep.estado_entrega = 'Pendiente' OR (${filterQuery.replace(/^\s*AND\s+/i, "")}))`;
+  }
   return { queryText: queryText + filterQuery, params };
 };
 
